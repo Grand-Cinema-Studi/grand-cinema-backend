@@ -1,0 +1,16 @@
+C:\Users\ssmah\Documents\Formations\STUDI\Grand Cinema App\grand-cinema-backend\src\GrandCinema.Application\bin\Debug\net10.0\GrandCinema.Application.deps.json
+C:\Users\ssmah\Documents\Formations\STUDI\Grand Cinema App\grand-cinema-backend\src\GrandCinema.Application\bin\Debug\net10.0\GrandCinema.Application.dll
+C:\Users\ssmah\Documents\Formations\STUDI\Grand Cinema App\grand-cinema-backend\src\GrandCinema.Application\bin\Debug\net10.0\GrandCinema.Application.pdb
+C:\Users\ssmah\Documents\Formations\STUDI\Grand Cinema App\grand-cinema-backend\src\GrandCinema.Application\bin\Debug\net10.0\GrandCinema.Domain.dll
+C:\Users\ssmah\Documents\Formations\STUDI\Grand Cinema App\grand-cinema-backend\src\GrandCinema.Application\bin\Debug\net10.0\GrandCinema.Domain.pdb
+C:\Users\ssmah\Documents\Formations\STUDI\Grand Cinema App\grand-cinema-backend\src\GrandCinema.Application\obj\Debug\net10.0\GrandCinema.Application.csproj.AssemblyReference.cache
+C:\Users\ssmah\Documents\Formations\STUDI\Grand Cinema App\grand-cinema-backend\src\GrandCinema.Application\obj\Debug\net10.0\GrandCinema.Application.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\ssmah\Documents\Formations\STUDI\Grand Cinema App\grand-cinema-backend\src\GrandCinema.Application\obj\Debug\net10.0\GrandCinema.Application.AssemblyInfoInputs.cache
+C:\Users\ssmah\Documents\Formations\STUDI\Grand Cinema App\grand-cinema-backend\src\GrandCinema.Application\obj\Debug\net10.0\GrandCinema.Application.AssemblyInfo.cs
+C:\Users\ssmah\Documents\Formations\STUDI\Grand Cinema App\grand-cinema-backend\src\GrandCinema.Application\obj\Debug\net10.0\GrandCinema.Application.csproj.CoreCompileInputs.cache
+C:\Users\ssmah\Documents\Formations\STUDI\Grand Cinema App\grand-cinema-backend\src\GrandCinema.Application\obj\Debug\net10.0\GrandCinema.Application.sourcelink.json
+C:\Users\ssmah\Documents\Formations\STUDI\Grand Cinema App\grand-cinema-backend\src\GrandCinema.Application\obj\Debug\net10.0\GrandCin.C5D7E55C.Up2Date
+C:\Users\ssmah\Documents\Formations\STUDI\Grand Cinema App\grand-cinema-backend\src\GrandCinema.Application\obj\Debug\net10.0\GrandCinema.Application.dll
+C:\Users\ssmah\Documents\Formations\STUDI\Grand Cinema App\grand-cinema-backend\src\GrandCinema.Application\obj\Debug\net10.0\refint\GrandCinema.Application.dll
+C:\Users\ssmah\Documents\Formations\STUDI\Grand Cinema App\grand-cinema-backend\src\GrandCinema.Application\obj\Debug\net10.0\GrandCinema.Application.pdb
+C:\Users\ssmah\Documents\Formations\STUDI\Grand Cinema App\grand-cinema-backend\src\GrandCinema.Application\obj\Debug\net10.0\ref\GrandCinema.Application.dll

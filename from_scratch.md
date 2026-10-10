@@ -43,6 +43,10 @@ docker compose version
 
 Figer la version du SDK (à lancer plus tard dans le dépôt, à l'étape 4) :
 ```bash
+# global.json : fichier à la racine du dépôt qui impose la version du SDK .NET au projet.
+#   --sdk-version     : version du SDK à utiliser (celle relevée à l'étape 1)
+#   --roll-forward latestFeature : accepte un SDK plus récent du même numéro majeur et mineur si la version exacte est absente
+# Utile avec plusieurs ordinateurs (Windows et Linux) : même version partout, donc même compilation, et version écrite dans le dépôt.
 dotnet new globaljson --sdk-version <version relevée> --roll-forward latestFeature
 ```
 
@@ -219,7 +223,10 @@ Supprimer les fichiers d'exemple générés, figer la version du SDK (voir l'ét
 ```bash
 rm src/GrandCinema.Domain/Class1.cs src/GrandCinema.Application/Class1.cs src/GrandCinema.Infrastructure/Class1.cs
 rm tests/GrandCinema.Domain.Tests/UnitTest1.cs tests/GrandCinema.Application.Tests/UnitTest1.cs
-dotnet new globaljson --sdk-version <version relevée> --roll-forward latestFeature
+# Rappel
+# global.json : fichier à la racine du dépôt qui impose la version du SDK .NET au projet.
+# Utile avec plusieurs ordinateurs (Windows et Linux) : même version partout, donc même compilation, et version écrite dans le dépôt.
+dotnet new globaljson --sdk-version 10.0.400 --roll-forward latestFeature
 dotnet build
 ```
 (Sous PowerShell : `Remove-Item <fichier>` à la place de `rm`.)
