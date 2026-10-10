@@ -7,7 +7,7 @@ Périmètre MVP : US 1.1, 2.1, 2.2, 2.3, 5.2, 5.3 (issues du Bloc 2).
 
 Conventions de ce document :
 - Légende : [ ] à faire · [x] fait (noter la date et le commit ou la PR).
-- Les commandes sont écrites pour PowerShell (Windows). Sous Linux, utiliser des `/` dans les chemins (déjà le cas ci-dessous) ; les commandes `dotnet`, `git` et `docker` sont identiques.
+- Les commandes sont écrites pour **bash** (Git Bash sous Windows, terminal sous Linux et macOS). Les chemins utilisent des `/`. Les commandes `dotnet`, `git` et `docker` sont identiques partout ; les rares variantes PowerShell sont signalées.
 - Les valeurs entre chevrons (`<...>`) sont à remplacer.
 
 ---
@@ -19,7 +19,7 @@ Conventions de ce document :
 - **Pourquoi :** garantir que le projet se reconstruit à l'identique, sur Windows comme sur Linux.
 
 Installation du SDK si nécessaire :
-```powershell
+```bash
 # Windows
 winget install Microsoft.DotNet.SDK.10
 ```
@@ -175,7 +175,7 @@ gh pr merge --merge --delete-branch
 
 *À quoi l'étape a servi : à poser les règles de collaboration : deux branches stables (main, dev), des branches courtes par user story et une convention de nommage écrite. Pourquoi : c'est un livrable explicite du D1 Q1 ; la protection des branches et les Pull Requests montrent au jury une démarche de qualité, même pour un projet mené seul.*
 
-### Étape 4 – Solution Clean Architecture [ ]
+### Étape 4 – Solution Clean Architecture [x]
 - **Quoi :** créer une solution composée de quatre couches et de deux projets de tests :
   - Domain : entités et règles métier, aucune dépendance ;
   - Application : cas d'usage (commandes et requêtes), dépend uniquement de Domain ;
@@ -223,13 +223,13 @@ Supprimer les fichiers d'exemple générés, figer la version du SDK (voir l'ét
 ```bash
 rm src/GrandCinema.Domain/Class1.cs src/GrandCinema.Application/Class1.cs src/GrandCinema.Infrastructure/Class1.cs
 rm tests/GrandCinema.Domain.Tests/UnitTest1.cs tests/GrandCinema.Application.Tests/UnitTest1.cs
-# Rappel
+# Rappel pour la commande ci-dessous
 # global.json : fichier à la racine du dépôt qui impose la version du SDK .NET au projet.
 # Utile avec plusieurs ordinateurs (Windows et Linux) : même version partout, donc même compilation, et version écrite dans le dépôt.
 dotnet new globaljson --sdk-version 10.0.400 --roll-forward latestFeature
 dotnet build
 ```
-(Sous PowerShell : `Remove-Item <fichier>` à la place de `rm`.)
+(Sous PowerShell uniquement : `Remove-Item <fichier>` à la place de `rm`.)
 
 Enregistrer :
 ```bash
@@ -238,9 +238,45 @@ git commit -m "chore: add clean architecture solution structure"
 git push -u origin chore/solution-structure
 ```
 
-- **Vérification :** `dotnet build` réussit sans erreur ; le projet Domain n'a aucune référence. Commit : ______.
+- **Vérification :** `dotnet build` réussit sans erreur ; le projet Domain n'a aucune référence. Commit : 76e1071 (chore: add clean architecture solution structure).
 
 *À quoi l'étape a servi : à construire le squelette du projet en couches, avec des dépendances qui vont toujours vers le métier. Pourquoi : le domaine reste indépendant de la base et du framework web, donc testable seul et facile à faire évoluer ; cela justifie l'architecture modulaire choisie au Bloc 1.*
+
+#### Étape 4b – Ignorer les fichiers générés (.gitignore)
+
+À faire **avant le premier `git add .`** de l'étape 4 : les dossiers `bin/` et `obj/` contiennent les fichiers produits par la compilation. Ils changent à chaque build, ne doivent pas être versionnés, et apparaîtraient sinon en `M` (modifié) dans `git status` sans que vous ayez touché au code.
+
+Créer un `.gitignore` standard .NET à la racine du dépôt :
+```bash
+dotnet new gitignore
+```
+Il ignore `bin/`, `obj/`, `.vs/`, les fichiers utilisateur et les résultats de tests. Le versionner avec le reste :
+```bash
+git add .gitignore
+git commit -m "chore: add .gitignore"
+```
+
+Au cas où les fichiers générés ont déjà été commités (symptôme : des fichiers de `obj/Debug` apparaissent en `M` après chaque compilation ou après un `git pull`), `.gitignore` seul ne suffit pas : Git continue de suivre les fichiers déjà enregistrés. Il faut les retirer du suivi, sans les supprimer du disque. Sur une branche dédiée, `dev` étant protégée :
+```bash
+git switch -c chore/gitignore
+dotnet new gitignore
+git rm -r --cached -q --ignore-unmatch -- "*/bin/*" "*/obj/*"
+git status --short
+git ls-files -- "*/bin/*" "*/obj/*"
+git add .gitignore
+git commit -m "chore: add .gitignore and stop tracking build output"
+git push -u origin chore/gitignore
+```
+- `git rm --cached` retire les fichiers de l'index Git uniquement ; ils restent sur le disque.
+- Les motifs doivent désigner des **fichiers** (`"*/obj/*"`) et non des dossiers (`"src/*/obj"`) : avec un caractère joker, Git ne prolonge pas un motif de dossier aux fichiers qu'il contient, et `--ignore-unmatch` masque alors l'échec en silence.
+- `git status --short` doit montrer beaucoup de lignes `D ` (supprimé de l'index) et `.gitignore` non suivi (`??`).
+- Si rien n'est retiré, variante : `git ls-files -z -- "*/bin/*" "*/obj/*" | xargs -0 git rm --cached -q`.
+- La commande `git ls-files -- "*/bin/*" "*/obj/*"` ne doit plus rien afficher (variante avec grep : `git ls-files | grep -E "/(bin|obj)/"`).
+- Ouvrir ensuite la Pull Request vers `dev`, la fusionner (voir l'étape 3c), puis faire `git switch dev` et `git pull`.
+
+- **Vérification :** après un `dotnet build`, `git status` n'affiche plus de fichiers de `bin/` ni de `obj/`. PR : ______.
+
+*À quoi l'étape a servi : à empêcher que les fichiers produits par la compilation soient versionnés, et à retirer ceux qui l'avaient été par erreur. Pourquoi : ils se régénèrent à chaque build, polluent `git status` et les diffs, alourdissent le dépôt et créent des conflits inutiles ; seul le code source doit être suivi.*
 
 ### Étape 5 – CQRS sans bibliothèque [ ]
 - **Quoi :** dans Application, définir deux contrats génériques : un gestionnaire de commandes (écriture) et un gestionnaire de requêtes (lecture). Enregistrer les gestionnaires dans l'injection de dépendances et les injecter directement dans les endpoints. Organiser les dossiers par fonctionnalité (par exemple Reservations/Commands, Seances/Queries).
@@ -368,7 +404,7 @@ mkdir -p docs/database
 dotnet ef migrations script --project src/GrandCinema.Infrastructure --startup-project src/GrandCinema.Api -o docs/database/schema.sql
 # créer docs/database/erd.md avec le schéma entité-relation
 ```
-(Sous PowerShell : `mkdir docs/database` suffit.)
+(Sous PowerShell uniquement : `mkdir docs/database` suffit.)
 
 Enregistrer :
 ```bash
