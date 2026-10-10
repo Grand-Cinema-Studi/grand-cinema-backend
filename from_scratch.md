@@ -175,7 +175,7 @@ gh pr merge --merge --delete-branch
 
 *À quoi l'étape a servi : à poser les règles de collaboration : deux branches stables (main, dev), des branches courtes par user story et une convention de nommage écrite. Pourquoi : c'est un livrable explicite du D1 Q1 ; la protection des branches et les Pull Requests montrent au jury une démarche de qualité, même pour un projet mené seul.*
 
-### Étape 4 – Solution Clean Architecture [ ]
+### Étape 4 – Solution Clean Architecture [x]
 - **Quoi :** créer une solution composée de quatre couches et de deux projets de tests :
   - Domain : entités et règles métier, aucune dépendance ;
   - Application : cas d'usage (commandes et requêtes), dépend uniquement de Domain ;
@@ -223,7 +223,7 @@ Supprimer les fichiers d'exemple générés, figer la version du SDK (voir l'ét
 ```bash
 rm src/GrandCinema.Domain/Class1.cs src/GrandCinema.Application/Class1.cs src/GrandCinema.Infrastructure/Class1.cs
 rm tests/GrandCinema.Domain.Tests/UnitTest1.cs tests/GrandCinema.Application.Tests/UnitTest1.cs
-# Rappel
+# Rappel pour la commande ci-dessous
 # global.json : fichier à la racine du dépôt qui impose la version du SDK .NET au projet.
 # Utile avec plusieurs ordinateurs (Windows et Linux) : même version partout, donc même compilation, et version écrite dans le dépôt.
 dotnet new globaljson --sdk-version 10.0.400 --roll-forward latestFeature
@@ -238,7 +238,7 @@ git commit -m "chore: add clean architecture solution structure"
 git push -u origin chore/solution-structure
 ```
 
-- **Vérification :** `dotnet build` réussit sans erreur ; le projet Domain n'a aucune référence. Commit : ______.
+- **Vérification :** `dotnet build` réussit sans erreur ; le projet Domain n'a aucune référence. Commit : 76e1071 (chore: add clean architecture solution structure).
 
 *À quoi l'étape a servi : à construire le squelette du projet en couches, avec des dépendances qui vont toujours vers le métier. Pourquoi : le domaine reste indépendant de la base et du framework web, donc testable seul et facile à faire évoluer ; cela justifie l'architecture modulaire choisie au Bloc 1.*
 
