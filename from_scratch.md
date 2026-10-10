@@ -68,7 +68,7 @@ git push -u origin main
 
 *À quoi l'étape a servi : à créer l'espace public où vit le code et à relier le dossier local à ce dépôt. Pourquoi : l'énoncé impose un lien Git public, sans quoi le dossier n'est pas valide ; GitHub sert aussi de sauvegarde et de synchronisation entre vos deux ordinateurs.*
 
-### Étape 3 – Branches et convention de nommage (D1 Q1) [ ]
+### Étape 3 – Branches et convention de nommage (D1 Q1) [x]
 - **Quoi :** créer dev, protéger main et dev, documenter la convention dans CONTRIBUTING.md et l'intégrer par Pull Request. Une Pull Request est l'équivalent de la « merge request » de l'énoncé.
 - **Pourquoi :** attendu explicite du D1 Q1 et preuve d'une gestion itérative et maîtrisée du code.
 
@@ -127,15 +127,47 @@ git commit -m "docs: add branch naming convention"
 git push -u origin docs/branch-convention
 ```
 
-Ouvrir la Pull Request vers dev (interface web, ou avec le CLI GitHub s'il est installé), la fusionner, puis récupérer dev :
+#### Étape 3c – Ouvrir et fusionner la Pull Request sur GitHub
+
+Sur GitHub (interface web) :
+1. Ouvrir le dépôt. Un bandeau jaune « docs/branch-convention had recent pushes » propose **Compare & pull request** : cliquer dessus. Sinon, onglet **Pull requests**, puis **New pull request**.
+2. Vérifier la ligne de comparaison en haut : **base: dev** ← **compare: docs/branch-convention**. GitHub propose `main` par défaut : si la base affichée est `main`, la changer pour `dev` avec la liste « base ».
+3. Renseigner le titre, au même format que le commit : `docs: add branch naming convention`. Dans la description, écrire en deux lignes ce qui change et pourquoi, avec une courte checklist (convention documentée, CONTRIBUTING.md ajouté, aucun autre changement).
+4. Cliquer sur **Create pull request**.
+5. Ouvrir l'onglet **Files changed** et relire le contenu : en projet solo, cette relecture est la seule « revue ».
+6. Revenir à l'onglet **Conversation** et vérifier le message « This branch has no conflicts » ainsi qu'aucune règle bloquante.
+7. Selon la situation, avec la flèche du bouton vert **Merge pull request** :
+   - **Create a merge commit** : conserve la branche visible dans le graphe Git (recommandé quand le workflow doit être démontré) **<- à sélectionner**
+   - **Squash and merge** : un seul commit par Pull Request, historique plus propre mais branches moins visibles.
+   - **Rebase and merge** : rejoue les commits de la branche, un par un, à la suite de dev, sans commit de fusion. L’historique est parfaitement linéaire, mais les commits sont recréés avec de nouveaux identifiants et le lien visuel avec la branche disparaît. À éviter quand le workflow par branches doit être démontré.
+8. Cliquer sur **Merge pull request** > **Confirm merge**.
+9. Noter le numéro de la Pull Request (par exemple `PR #1`) dans la vérification ci-dessous.
+
+*Pour mémoire, les trois modes :*
+*Merge commit : garde tous les commits et un commit de fusion, la branche reste visible.*
+*Squash : un seul commit pour toute la Pull Request.*
+*Rebase : les commits d’origine sont conservés, sans commit de fusion.*
+
+Revenir en local et récupérer `dev` à jour :
 ```bash
-gh pr create --base dev --title "docs: add branch naming convention" --body "Convention de nommage des branches"
 git switch dev
 git pull
+git push origin --delete docs/branch-convention
 git branch -d docs/branch-convention
+git fetch --prune
 ```
+(`git fetch --prune` nettoie la référence locale de la branche distante supprimée.)
 
-- **Vérification :** un push direct sur main est refusé ; la première Pull Request est fusionnée dans dev. PR : ______.
+Variante en ligne de commande, si le CLI GitHub est installé :
+```bash
+gh pr create --base dev --head docs/branch-convention --title "docs: add branch naming convention" --body "Convention de nommage des branches"
+gh pr merge --merge --delete-branch
+```
+(Avec `--delete-branch`, `gh` supprime la branche puis vous replace sur la branche par défaut, `main` : refaire alors `git switch dev` et `git pull`.)
+
+*À quoi l'étape a servi : à intégrer le travail dans `dev` par une Pull Request, jamais par un push direct, et à vérifier que la protection de branche fonctionne. Pourquoi : c'est le cycle qui sera répété pour chaque user story (branche, Pull Request, relecture, fusion), et il laisse une trace claire de chaque changement.*
+
+- **Vérification :** un push direct sur main est refusé ; la première Pull Request est fusionnée dans dev. PR : Docs/branch convention- #3.
 
 *À quoi l'étape a servi : à poser les règles de collaboration : deux branches stables (main, dev), des branches courtes par user story et une convention de nommage écrite. Pourquoi : c'est un livrable explicite du D1 Q1 ; la protection des branches et les Pull Requests montrent au jury une démarche de qualité, même pour un projet mené seul.*
 
