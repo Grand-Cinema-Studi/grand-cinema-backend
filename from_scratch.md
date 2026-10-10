@@ -50,65 +50,94 @@ dotnet new globaljson --sdk-version <version relevée> --roll-forward latestFeat
 
 *À quoi l'étape a servi : à disposer d'un poste de développement prêt et identique sur les deux ordinateurs (SDK, Git, Docker). Pourquoi : sans version commune du SDK, le projet peut compiler sur une machine et pas sur l'autre ; figer la version rend le travail reproductible, ce que le jury peut vérifier.*
 
-### Étape 2 – Dépôt public [ ]
+### Étape 2 – Dépôt public [x]
 - **Quoi :** créer sur GitHub (interface web) un dépôt public « grand-cinema-backend » avec un README, un .gitignore adapté à .NET (modèle Visual Studio) et une licence MIT. Relier le dossier local à ce dépôt.
 - **Pourquoi :** sans lien Git public, le dossier d'examen est invalide. On initialise le dossier au lieu de le cloner, car il contient déjà ce fichier.
 
 Dans le dossier local `grand-cinema-backend` :
 ```bash
 git init
-git branch -M main
-git remote add origin https://github.com/Grand-Cinema-Studi/grand-cinema-backend.git
-git pull origin main
 git add from_scratch.md
 git commit -m "docs: add from_scratch journal"
+git branch -M main
+git remote add origin https://github.com/Grand-Cinema-Studi/grand-cinema-backend.git
 git push -u origin main
 ```
 
-- **Vérification :** le dépôt s'ouvre dans un navigateur sans être connecté à GitHub. Commit : ______.
+- **Vérification :** le dépôt s'ouvre dans un navigateur sans être connecté à GitHub. Commit : ce17aa4 (docs: add from_scratch journal).
 
 *À quoi l'étape a servi : à créer l'espace public où vit le code et à relier le dossier local à ce dépôt. Pourquoi : l'énoncé impose un lien Git public, sans quoi le dossier n'est pas valide ; GitHub sert aussi de sauvegarde et de synchronisation entre vos deux ordinateurs.*
 
 ### Étape 3 – Branches et convention de nommage (D1 Q1) [ ]
-- **Quoi :** créer develop, protéger main et develop, documenter la convention dans CONTRIBUTING.md et l'intégrer par Pull Request. Une Pull Request est l'équivalent de la « merge request » de l'énoncé.
+- **Quoi :** créer dev, protéger main et dev, documenter la convention dans CONTRIBUTING.md et l'intégrer par Pull Request. Une Pull Request est l'équivalent de la « merge request » de l'énoncé.
 - **Pourquoi :** attendu explicite du D1 Q1 et preuve d'une gestion itérative et maîtrisée du code.
 
-Créer develop :
+Créer dev :
 ```bash
-git switch -c develop
-git push -u origin develop
+git switch -c dev
+git push -u origin dev
 ```
 
-Sur GitHub (interface web : Settings, Rules ou Branches) : protéger `main` et `develop` (pas de push direct, Pull Request obligatoire).
+#### Étape 3b – Protéger `main` et `dev` sur GitHub
+
+Cette étape se fait dans l'interface web de GitHub, juste après la publication de `dev`. Une fois les règles actives, plus aucun push direct n'est possible sur `main` et `dev` : tout passe par une branche et une Pull Request, y compris les modifications de ce journal.
+
+1. Ouvrir le dépôt sur GitHub et cliquer sur l'onglet **Settings** (réservé au propriétaire du dépôt).
+2. Dans le menu de gauche, section « Code, planning, and automation », cliquer sur le menu déroulant **Rulests**, puis sur **Rulesets**.
+3. Cliquer sur **New ruleset**, puis **New branch ruleset**.
+4. Renseigner **Ruleset Name** : `protect-main-and-dev`.
+5. Mettre **Enforcement status** sur **Active** (en « Disabled », les règles ne s'appliquent pas).
+6. Laisser la **Bypass list** vide : sinon vous pouvez contourner vos propres règles.
+7. Dans **Target branches**, cliquer sur **Add target**, choisir **Include by pattern**, saisir `main` et cliquer sur "Add Inclusion pattern". Recommencer avec `dev`.
+8. Dans **Branch rules**, cocher :
+   - **Restrict deletions** (interdit de supprimer la branche) ;
+   - **Block force pushes** (interdit de réécrire l'historique) ;
+   - **Require a pull request before merging**, puis régler **Required approvals** sur **0**. En projet solo, on ne peut pas approuver sa propre Pull Request : une approbation requise bloquerait toute fusion.
+9. Ne pas cocher « Require status checks to pass » pour l'instant : aucun pipeline d'intégration continue n'existe encore. À ajouter plus tard, quand la CI sera en place.
+10. Cliquer sur **Create** en bas de la page.
+
+Variante avec l'ancienne interface : Settings, puis **Branches**, puis **Add branch protection rule**. Saisir `main` comme motif, cocher **Require a pull request before merging** (approbations à 0) et valider ; recommencer pour `dev`.
+
+Vérification : tenter un push direct sur `dev`, qui doit être refusé, puis annuler le commit de test.
+```bash
+git switch dev
+git commit --allow-empty -m "test: direct push"
+git push
+# attendu : refus, avec un message indiquant que les modifications doivent passer par une Pull Request
+git reset --soft HEAD~1
+```
 
 Créer la convention sur une branche dédiée :
 ```bash
-git switch -c docs/branch-convention develop
-# créer CONTRIBUTING.md (contenu ci-dessous)
-git add CONTRIBUTING.md
-git commit -m "docs: add branch naming convention"
-git push -u origin docs/branch-convention
+git switch -c docs/branch-convention dev
 ```
 
-Contenu de CONTRIBUTING.md :
-- main = production, alimentée uniquement depuis develop ou une branche hotfix ;
-- develop = intégration ;
+Créer le ficher CONTRIBUTING.md et y insérer ce contenu : 
+- main = production, alimentée uniquement depuis dev ou une branche hotfix ;
+- dev = intégration ;
 - préfixes de branches : feature, fix, chore, docs, test, hotfix ;
 - nom d'une branche de fonctionnalité = préfixe + numéro de user story + court intitulé (exemple : feature/us-2-3-reserve-places) ;
 - messages de commit au format Conventional Commits (feat, fix, test, docs, chore) ;
 - une branche = une user story = une Pull Request relue avec une checklist.
 
-Ouvrir la Pull Request vers develop (interface web, ou avec le CLI GitHub s'il est installé), la fusionner, puis récupérer develop :
+pousser la branche dédiée et son contenu :
 ```bash
-gh pr create --base develop --title "docs: add branch naming convention" --body "Convention de nommage des branches"
-git switch develop
+git add CONTRIBUTING.md
+git commit -m "docs: add branch naming convention"
+git push -u origin docs/branch-convention
+```
+
+Ouvrir la Pull Request vers dev (interface web, ou avec le CLI GitHub s'il est installé), la fusionner, puis récupérer dev :
+```bash
+gh pr create --base dev --title "docs: add branch naming convention" --body "Convention de nommage des branches"
+git switch dev
 git pull
 git branch -d docs/branch-convention
 ```
 
-- **Vérification :** un push direct sur main est refusé ; la première Pull Request est fusionnée dans develop. PR : ______.
+- **Vérification :** un push direct sur main est refusé ; la première Pull Request est fusionnée dans dev. PR : ______.
 
-*À quoi l'étape a servi : à poser les règles de collaboration : deux branches stables (main, develop), des branches courtes par user story et une convention de nommage écrite. Pourquoi : c'est un livrable explicite du D1 Q1 ; la protection des branches et les Pull Requests montrent au jury une démarche de qualité, même pour un projet mené seul.*
+*À quoi l'étape a servi : à poser les règles de collaboration : deux branches stables (main, dev), des branches courtes par user story et une convention de nommage écrite. Pourquoi : c'est un livrable explicite du D1 Q1 ; la protection des branches et les Pull Requests montrent au jury une démarche de qualité, même pour un projet mené seul.*
 
 ### Étape 4 – Solution Clean Architecture [ ]
 - **Quoi :** créer une solution composée de quatre couches et de deux projets de tests :
@@ -121,7 +150,7 @@ git branch -d docs/branch-convention
 
 Branche de travail :
 ```bash
-git switch -c chore/solution-structure develop
+git switch -c chore/solution-structure dev
 ```
 
 Créer la solution et les projets (avec le SDK 10, le fichier de solution a l'extension slnx : c'est normal) :
@@ -179,7 +208,7 @@ git push -u origin chore/solution-structure
 - **Pourquoi :** séparer lecture et écriture clarifie le code et prépare la montée en charge. Aucune bibliothèque tierce n'est utilisée : MediatR est passé sous licence commerciale en 2025 (à vérifier au moment de la soutenance), et le code maison est plus simple à expliquer.
 
 ```bash
-git switch -c chore/cqrs-contracts develop
+git switch -c chore/cqrs-contracts dev
 # (ou continuer sur la branche de l'étape 4 si elle n'est pas encore fusionnée)
 # créer les interfaces et un gestionnaire fictif, l'appeler depuis un endpoint de test
 dotnet build
@@ -201,7 +230,7 @@ git push -u origin chore/cqrs-contracts
 - **Pourquoi :** PostgreSQL est le choix du Bloc 1 (RDS PostgreSQL). Le conteneur reproduit l'environnement de production en local, et les secrets restent hors du dépôt public.
 
 ```bash
-git switch -c chore/database-setup develop
+git switch -c chore/database-setup dev
 ```
 
 Packages :
@@ -284,7 +313,7 @@ git push -u origin chore/database-setup
 Règles de mise en œuvre : écrire les entités dans Domain sans attribut lié à EF ; configurer en Fluent API et placer le DbContext dans Infrastructure.
 
 ```bash
-git switch -c chore/database-schema develop
+git switch -c chore/database-schema dev
 # écrire les entités (Domain), le DbContext et les configurations (Infrastructure)
 ```
 
@@ -314,28 +343,28 @@ git push -u origin chore/database-schema
 *À quoi l'étape a servi : à traduire le besoin métier (films, séances, places, réservations, utilisateurs) en tables, avec leur script SQL et leur schéma. Pourquoi : c'est le livrable du D1 Q2 ; la contrainte d'unicité sur séance et place est la première défense contre la double vente, qui sera le bug étudié au Dossier 3.*
 
 ### Étape 8 – Livrer la phase [ ]
-- **Quoi :** ouvrir une Pull Request vers develop pour chaque branche de la phase, fusionner une fois la compilation passée, puis nettoyer. Relire ce fichier : numéroté, daté.
+- **Quoi :** ouvrir une Pull Request vers dev pour chaque branche de la phase, fusionner une fois la compilation passée, puis nettoyer. Relire ce fichier : numéroté, daté.
 - **Pourquoi :** montrer au jury une intégration continue d'un incrément fini, tracée de bout en bout.
 
 Pour chaque branche (chore/solution-structure, chore/cqrs-contracts, chore/database-setup, chore/database-schema) :
 ```bash
-gh pr create --base develop --title "<titre>" --body "<description>"
+gh pr create --base dev --title "<titre>" --body "<description>"
 # après fusion :
-git switch develop
+git switch dev
 git pull
 git branch -d <nom-de-la-branche>
 ```
 
-Contrôle final sur develop :
+Contrôle final sur dev :
 ```bash
 dotnet restore
 dotnet build
 dotnet test
 ```
 
-- **Vérification :** develop contient toute la phase 1, la compilation et les tests passent. PR : ______.
+- **Vérification :** dev contient toute la phase 1, la compilation et les tests passent. PR : ______.
 
-*À quoi l'étape a servi : à intégrer proprement le travail de la phase dans develop et à prouver qu'il compile et se teste. Pourquoi : un incrément fini et relu, tracé par des Pull Requests, montre la gestion itérative attendue par la compétence C3.1 et sert de base saine pour les user stories suivantes.*
+*À quoi l'étape a servi : à intégrer proprement le travail de la phase dans dev et à prouver qu'il compile et se teste. Pourquoi : un incrément fini et relu, tracé par des Pull Requests, montre la gestion itérative attendue par la compétence C3.1 et sert de base saine pour les user stories suivantes.*
 
 ---
 
@@ -347,7 +376,7 @@ dotnet test --collect:"XPlat Code Coverage"               # tests avec couvertur
 dotnet run --project src/GrandCinema.Api                  # lancer l'API
 docker compose up -d                                      # démarrer PostgreSQL
 docker compose down                                       # arrêter PostgreSQL (les données restent dans le volume)
-git switch -c feature/us-<n>-<slug> develop               # nouvelle branche de fonctionnalité
+git switch -c feature/us-<n>-<slug> dev               # nouvelle branche de fonctionnalité
 git push -u origin <branche>                              # publier une branche
 ```
 
