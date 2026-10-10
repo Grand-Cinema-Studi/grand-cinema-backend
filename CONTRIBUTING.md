@@ -1,0 +1,6 @@
+- main = production, alimentée uniquement depuis dev ou une branche hotfix ;
+- dev = intégration ;
+- préfixes de branches : feature, fix, chore, docs, test, hotfix ;
+- nom d'une branche de fonctionnalité = préfixe + numéro de user story + court intitulé (exemple : feature/us-2-3-reserve-places) ;
+- messages de commit au format Conventional Commits (feat, fix, test, docs, chore) ;
+- une branche = une user story = une Pull Request relue avec une checklist.
