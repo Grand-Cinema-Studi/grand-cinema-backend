@@ -9,6 +9,33 @@ Conventions de ce document :
 - Légende : [ ] à faire · [x] fait (noter la date et le commit ou la PR).
 - Les commandes sont écrites pour **bash** (Git Bash sous Windows, terminal sous Linux et macOS). Les chemins utilisent des `/`. Les commandes `dotnet`, `git` et `docker` sont identiques partout ; les rares variantes PowerShell sont signalées.
 - Les valeurs entre chevrons (`<...>`) sont à remplacer.
+- Vocabulaire : « dépôt » désigne toujours le dépôt Git ; **repository** désigne le pattern d'accès aux données (`IScreeningReadRepository`, ...).
+
+## Convention de nommage du code
+
+Tout ce qui est nommé dans le code est en **anglais** : projets, espaces de noms, dossiers, classes, propriétés, méthodes, noms des tests, tables et colonnes de la base, branches et messages de commit. Le français reste réservé à ce journal, aux textes affichés à l'utilisateur (dans le front) et aux données d'exemple.
+
+Correspondance avec le vocabulaire du Bloc 1 (MCD, user stories) :
+
+| Bloc 1 (français) | Code (anglais) |
+|---|---|
+| Programmation (films et horaires d'un jour) | Schedule |
+| Film | Movie |
+| Salle | Room |
+| Place | Seat |
+| Séance | Screening |
+| Réservation | Reservation |
+| Place réservée | ReservedSeat |
+| Utilisateur | User |
+| Rôle : Spectateur, Caissier, Contrôleur, Responsable | UserRole : Customer, Cashier, TicketInspector, Manager |
+| Statut : En attente de paiement, Confirmée, Expirée, Annulée | ReservationStatus : PendingPayment, Confirmed, Expired, Cancelled |
+
+Règles complémentaires :
+- noms des tests : `When_<situation>_Then_<résultat attendu>`, qui reprend le « Quand / Alors » des critères d'acceptation (exemple : `When_no_screening_exists_Then_the_movie_list_is_empty`) ;
+- couche Application rangée par fonctionnalité : `Features/<Feature>/Commands`, `Queries` et `DTOs` (voir l'étape 5) ;
+- couche Domain rangée par type d'élément : `Entities`, puis `Enums` quand le besoin apparaît.
+
+*Pourquoi : l'anglais est la langue de l'écosystème .NET (bibliothèques, documentation, messages d'erreur) ; une seule langue évite les noms hybrides comme `GetSeancesByDate`, et ce tableau garde le lien avec le MCD du Bloc 1, que le jury compare au code.*
 
 ---
 
@@ -110,6 +137,8 @@ git push
 # attendu : refus, avec un message indiquant que les modifications doivent passer par une Pull Request
 git reset --soft HEAD~1
 ```
+
+*À quoi la sous-étape a servi : à empêcher toute modification directe de `main` et `dev` : suppression, réécriture de l'historique et push direct sont refusés, tout passe par une Pull Request. Pourquoi : les deux branches stables restent toujours dans un état relu et cohérent ; le test du push refusé prouve que la règle est réellement active, et pas seulement configurée.*
 
 Créer la convention sur une branche dédiée :
 ```bash
@@ -278,27 +307,239 @@ git push -u origin chore/gitignore
 
 *À quoi l'étape a servi : à empêcher que les fichiers produits par la compilation soient versionnés, et à retirer ceux qui l'avaient été par erreur. Pourquoi : ils se régénèrent à chaque build, polluent `git status` et les diffs, alourdissent le dépôt et créent des conflits inutiles ; seul le code source doit être suivi.*
 
-### Étape 5 – CQRS sans bibliothèque [ ]
-- **Quoi :** dans Application, définir deux contrats génériques : un gestionnaire de commandes (écriture) et un gestionnaire de requêtes (lecture). Enregistrer les gestionnaires dans l'injection de dépendances et les injecter directement dans les endpoints. Organiser les dossiers par fonctionnalité (par exemple Reservations/Commands, Seances/Queries).
-- **Pourquoi :** séparer lecture et écriture clarifie le code et prépare la montée en charge. Aucune bibliothèque tierce n'est utilisée : MediatR est passé sous licence commerciale en 2025 (à vérifier au moment de la soutenance), et le code maison est plus simple à expliquer.
+### Étape 5 – CQRS et premier cas d'usage en TDD (US 1.1) [ ]
+- **Quoi :** poser les contrats CQRS, puis développer en TDD (cycle rouge, vert, refactor) le premier vrai cas d'usage du Grand Cinéma : l'**US 1.1, consulter les films et les horaires** (la programmation, `Schedule` dans le code). Le gestionnaire fictif prévu au départ est abandonné.
+- **Pourquoi :** l'US 1.1 est la plus petite tranche complète (aucune dépendance à l'authentification ni au paiement) : elle valide l'architecture et l'outillage de tests avant les stories à risque (US 2.3). Le TDD est la méthode annoncée au Bloc 2 : chaque critère d'acceptation (Étant donné / Quand / Alors) devient un test. Aucune bibliothèque CQRS n'est utilisée : MediatR est passé sous licence commerciale en 2025 (à vérifier au moment de la soutenance), et deux interfaces suffisent.
+
+Organisation retenue (tous les noms en anglais, voir la convention de nommage en tête de ce journal). La couche Application est rangée **par fonctionnalité** ; dans chaque fonctionnalité, les commandes, les requêtes et les DTO :
+```text
+src/GrandCinema.Domain/
+└── Entities/                 Movie, Room, Screening (puis Seat, Reservation, ReservedSeat, User)
+src/GrandCinema.Application/
+├── Abstractions/
+│   ├── Cqrs/                 IQueryHandler, ICommandHandler
+│   └── Persistence/          interfaces des repositories (IScreeningReadRepository, ...)
+└── Features/
+    ├── Screenings/           US 1.1, 2.2, 5.2
+    │   ├── Commands/         (créé avec la première commande, US 5.2)
+    │   ├── DTOs/             ScheduleDto, MovieScheduleDto, ScreeningDto
+    │   └── Queries/          GetScheduleQuery, GetScheduleHandler
+    ├── Reservations/         US 2.3, 5.3
+    └── Auth/                 US 2.1
+tests/GrandCinema.Application.Tests/
+└── Features/Screenings/Queries/GetScheduleHandlerTests.cs
+```
+- `Abstractions/Cqrs` contient les contrats des handlers de requêtes et de commandes. Requêtes et commandes sont des « messages » au sens CQRS, mais elles sont traitées dans le même processus, par un simple appel de méthode, sans broker de messages (ni RabbitMQ ni Kafka) : d'où le nom `Cqrs` plutôt que `Messaging`.
+- Les dossiers sont créés au moment où le premier fichier y arrive : Git ne versionne pas les dossiers vides, et un dossier vide n'apporte rien.
+- Les interfaces des repositories sont dans `Abstractions/Persistence` et non dans une fonctionnalité : la réservation lira aussi les séances, et une fonctionnalité ne doit pas dépendre d'une autre.
+- Les tests reprennent exactement l'arborescence de `src` : à toute classe correspond un test au même chemin.
+
+#### Étape 5a – Contrats CQRS (branche chore)
 
 ```bash
 git switch -c chore/cqrs-contracts dev
-# (ou continuer sur la branche de l'étape 4 si elle n'est pas encore fusionnée)
-# créer les interfaces et un gestionnaire fictif, l'appeler depuis un endpoint de test
+mkdir -p src/GrandCinema.Application/Abstractions/Cqrs
+```
+Créer `src/GrandCinema.Application/Abstractions/Cqrs/IQueryHandler.cs` (lecture) et `ICommandHandler.cs` (écriture) :
+```csharp
+namespace GrandCinema.Application.Abstractions.Cqrs;
+
+public interface IQueryHandler<in TQuery, TResult>
+{
+    Task<TResult> Handle(TQuery query, CancellationToken cancellationToken = default);
+}
+
+public interface ICommandHandler<in TCommand, TResult>
+{
+    Task<TResult> Handle(TCommand command, CancellationToken cancellationToken = default);
+}
+```
+(Mettre chaque interface dans son propre fichier.) Aucun test à ce stade : ce sont de simples contrats, ils seront exercés par le premier gestionnaire réel.
+
+```bash
 dotnet build
-dotnet run --project src/GrandCinema.Api
-# dans un autre terminal : appeler l'endpoint de test
-curl http://localhost:<port>/<endpoint-de-test>
-# supprimer le gestionnaire fictif et son endpoint, puis :
 git add .
-git commit -m "feat: add CQRS handler contracts"
+git commit -m "chore: add CQRS handler contracts"
 git push -u origin chore/cqrs-contracts
 ```
+Ouvrir la Pull Request vers `dev` et la fusionner (voir l'étape 3c), puis :
+```bash
+git switch dev
+git pull
+```
 
-- **Vérification :** le gestionnaire fictif répond via l'endpoint de test, puis est supprimé. Commit : ______.
+*À quoi la sous-étape a servi : à créer les deux interfaces communes à tous les cas d'usage, `IQueryHandler` pour lire et `ICommandHandler` pour modifier, dans `Abstractions/Cqrs`, et à les intégrer dans `dev` par une Pull Request séparée. Pourquoi : chaque handler suit le même contrat (une méthode `Handle` qui reçoit la requête ou la commande et renvoie un résultat), ce qui rend le code prévisible et l'appel depuis les endpoints uniforme ; une branche chore séparée garde la Pull Request de l'US 1.1 centrée sur la fonctionnalité.*
 
-*À quoi l'étape a servi : à fixer la façon d'écrire les cas d'usage : une commande modifie les données, une requête les lit. Pourquoi : cette séparation rend le code lisible et prépare la montée en charge des lectures pendant le festival ; le faire sans bibliothèque évite une dépendance payante et simplifie l'explication à l'oral.*
+#### Étape 5b – Branche de la fonctionnalité et outils de test
+
+Une branche par user story, au nom conforme à la convention :
+```bash
+git switch -c feature/us-1-1-view-schedule dev
+```
+Ajouter les outils de test au projet de tests de l'application (Moq pour les doublures, comme annoncé au Bloc 2 ; Shouldly pour des assertions lisibles ; une horloge simulée pour maîtriser « aujourd'hui ») :
+```bash
+dotnet add tests/GrandCinema.Application.Tests package Moq
+dotnet add tests/GrandCinema.Application.Tests package Shouldly
+dotnet add tests/GrandCinema.Application.Tests package Microsoft.Extensions.TimeProvider.Testing
+```
+(Éviter FluentAssertions : sa version 8 est commerciale.)
+
+Règles du TDD dans ce projet :
+- on n'écrit **aucun code de production sans test rouge** qui l'exige ;
+- chaque test porte l'étiquette de la story (`[Trait("US", "1.1")]`) et un nom construit sur le critère d'acceptation : `When_<situation>_Then_<résultat attendu>` ;
+- structure Arrange / Act / Assert, un seul comportement par test ;
+- les tests de l'application n'utilisent ni base de données ni réseau : le repository est une doublure (Moq).
+
+Lancer uniquement les tests de la story :
+```bash
+dotnet test --filter "US=1.1"
+```
+
+*À quoi la sous-étape a servi : à ouvrir la branche dédiée à l'US 1.1, à installer les outils de test (Moq pour simuler le repository, Shouldly pour les assertions, FakeTimeProvider pour fixer la date) et à poser les règles TDD du projet. Pourquoi : une branche par story trace le travail jusqu'à la Pull Request ; les doublures et l'horloge simulée rendent les tests rapides et reproductibles, sans base de données ni dépendance à la date réelle ; l'étiquette `US` permet de lancer les tests d'une seule story.*
+
+#### Étape 5c – De l'US 1.1 à la liste de tests
+
+Critères d'acceptation du Bloc 2, traduits en tests (on écrit la liste avant le premier test) :
+
+| Critère d'acceptation | Test à écrire |
+|---|---|
+| Je vois les films avec leurs séances (jour, heure, salle) | Cycle 1 : `When_screenings_exist_Then_they_are_grouped_by_movie` |
+| Quand je choisis une date, seules les séances de ce jour s'affichent | Cycle 2 : `When_a_date_is_chosen_Then_the_repository_is_queried_for_that_day` |
+| Quand aucune séance n'existe pour cette date, un message explicite s'affiche | Cycle 3 : `When_no_screening_exists_Then_the_movie_list_is_empty` (l'affichage du message relève du front) |
+| J'ouvre la programmation (sans choisir de date) | Cycle 4 : `When_no_date_is_chosen_Then_today_is_used` |
+| Séances lisibles dans l'ordre | Cycle 5 : `When_a_movie_has_several_screenings_Then_they_are_sorted_by_time` |
+
+Remarque : le filtre par jour est réellement exécuté par le repository (requête SQL). Le test du cycle 2 vérifie la bonne transmission de la date ; le filtre lui-même sera vérifié par un **test d'intégration** avec PostgreSQL à la suite de l'étape 7.
+
+*À quoi la sous-étape a servi : à transformer chaque critère d'acceptation de l'US 1.1 en un test nommé, avant d'écrire la moindre ligne de code. Pourquoi : la liste fixe le périmètre (on code ce que les critères demandent, rien de plus) et crée la traçabilité du Bloc 2 au Bloc 3 : pour chaque critère, le jury retrouve le test qui le prouve.*
+
+#### Étape 5d – Cycle 1 (rouge, vert, refactor)
+
+**1. Rouge : écrire le test.**
+```bash
+mkdir -p tests/GrandCinema.Application.Tests/Features/Screenings/Queries
+```
+Créer `tests/GrandCinema.Application.Tests/Features/Screenings/Queries/GetScheduleHandlerTests.cs` :
+```csharp
+using GrandCinema.Application.Abstractions.Persistence;
+using GrandCinema.Application.Features.Screenings.Queries;
+using GrandCinema.Domain.Entities;
+using Microsoft.Extensions.Time.Testing;
+using Moq;
+using Shouldly;
+
+namespace GrandCinema.Application.Tests.Features.Screenings.Queries;
+
+public class GetScheduleHandlerTests
+{
+    private readonly Mock<IScreeningReadRepository> _screenings = new();
+    private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 7, 18, 10, 0, 0, TimeSpan.Zero));
+
+    [Fact]
+    [Trait("US", "1.1")]
+    public async Task When_screenings_exist_Then_they_are_grouped_by_movie()
+    {
+        // Arrange
+        var day = new DateOnly(2026, 7, 18);
+        var room = new Room { Id = Guid.NewGuid(), Name = "Salle 1", Capacity = 170 };
+        var movie = new Movie { Id = Guid.NewGuid(), Title = "Blue Note", DurationMinutes = 110, Genre = "Documentary" };
+        var startsAt = day.ToDateTime(new TimeOnly(18, 30));
+        _screenings
+            .Setup(r => r.GetByDateAsync(day, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Screening> { new() { Id = Guid.NewGuid(), Movie = movie, Room = room, StartsAt = startsAt, Price = 9m } });
+        var handler = new GetScheduleHandler(_screenings.Object, _time);
+
+        // Act
+        var result = await handler.Handle(new GetScheduleQuery(day));
+
+        // Assert
+        var movieSchedule = result.Movies.ShouldHaveSingleItem();
+        movieSchedule.Title.ShouldBe("Blue Note");
+        var screening = movieSchedule.Screenings.ShouldHaveSingleItem();
+        screening.RoomName.ShouldBe("Salle 1");
+        screening.StartsAt.ShouldBe(startsAt);
+    }
+}
+```
+Les valeurs entre guillemets (« Salle 1 », « Blue Note ») sont des données d'exemple, pas des noms de code : elles peuvent rester en français.
+
+Lancer `dotnet build` : le test ne compile pas, car les types n'existent pas encore. C'est un premier « rouge », mais il faut un rouge d'assertion.
+
+**2. Squelettes minimaux pour compiler**, sans logique :
+```bash
+mkdir -p src/GrandCinema.Domain/Entities
+mkdir -p src/GrandCinema.Application/Abstractions/Persistence
+mkdir -p src/GrandCinema.Application/Features/Screenings/DTOs src/GrandCinema.Application/Features/Screenings/Queries
+```
+- dans `src/GrandCinema.Domain/Entities/` (espace de noms `GrandCinema.Domain.Entities`) : les classes `Movie` (Id, Title, Synopsis facultatif, DurationMinutes, Genre, PosterUrl facultatif), `Room` (Id, Name, Capacity) et `Screening` (Id, Movie, Room, StartsAt de type DateTime en heure locale du cinéma, Price). Les propriétés obligatoires utilisent `required` ;
+- dans `src/GrandCinema.Application/Abstractions/Persistence/` : l'interface `IScreeningReadRepository` avec une seule méthode `Task<IReadOnlyList<Screening>> GetByDateAsync(DateOnly date, CancellationToken cancellationToken = default)` ;
+- dans `src/GrandCinema.Application/Features/Screenings/DTOs/` (un record par fichier) : `ScheduleDto(DateOnly Date, IReadOnlyList<MovieScheduleDto> Movies)`, `MovieScheduleDto(Guid MovieId, string Title, int DurationMinutes, string Genre, string? PosterUrl, IReadOnlyList<ScreeningDto> Screenings)`, `ScreeningDto(Guid ScreeningId, DateTime StartsAt, string RoomName)` ;
+- dans `src/GrandCinema.Application/Features/Screenings/Queries/` : le record `GetScheduleQuery(DateOnly? Date)` et la classe `GetScheduleHandler`, qui implémente `IQueryHandler<GetScheduleQuery, ScheduleDto>`, reçoit `IScreeningReadRepository` et `TimeProvider` par son constructeur, et dont la méthode `Handle` lève une `NotImplementedException`.
+
+Pas de dossier `Commands/` pour l'instant : l'US 1.1 ne fait que lire.
+
+**3. Vérifier le vrai rouge.**
+```bash
+dotnet test --filter "US=1.1"
+```
+Résultat attendu : 1 test échoué (`NotImplementedException`). Enregistrer :
+```bash
+git add .
+git commit -m "test(us-1.1): red - group screenings by movie"
+```
+
+**4. Vert : le code minimal.** Dans `Handle` : utiliser la date de la requête, appeler le repository, regrouper les séances par film (`GroupBy` sur l'identifiant du film) et construire le `ScheduleDto`. Ne rien ajouter d'autre (ni tri, ni date du jour) : ces comportements viendront de tests suivants.
+```bash
+dotnet test --filter "US=1.1"
+```
+Résultat attendu : 1 test réussi.
+```bash
+git add .
+git commit -m "feat(us-1.1): green - group screenings by movie"
+```
+
+**5. Refactor.** Sans changer le comportement : extraire la construction de `MovieScheduleDto` dans une méthode privée (par exemple `ToMovieSchedule`), clarifier les noms. Relancer les tests (toujours verts).
+```bash
+dotnet test --filter "US=1.1"
+git add .
+git commit -m "refactor(us-1.1): extract movie schedule mapping"
+```
+
+*À quoi la sous-étape a servi : à dérouler un premier cycle TDD complet. Rouge : le test décrit le comportement attendu et échoue, ce qui prouve qu'il teste vraiment quelque chose. Vert : le code minimal le fait passer. Refactor : le code est amélioré sans changer de comportement, sous la protection du test. Pourquoi : chaque ligne de production est justifiée par un test ; les trois commits montrent dans l'historique Git que la méthode a réellement été appliquée.*
+
+#### Étape 5e – Cycles 2 à 5
+
+Pour chacun, dans la même classe de tests, répéter exactement : écrire le test (rouge), vérifier l'échec avec `dotnet test --filter "US=1.1"`, écrire le code minimal (vert), refactorer, avec un commit par phase (`test(us-1.1): red - ...`, `feat(us-1.1): green - ...`, `refactor(us-1.1): ...`).
+
+- **Cycle 2 – date choisie.** Test `When_a_date_is_chosen_Then_the_repository_is_queried_for_that_day` : requête avec le 19 juillet ; vérifier avec `_screenings.Verify(...)` que le repository est appelé une seule fois pour cette date, et que `result.Date` vaut le 19 juillet.
+- **Cycle 3 – aucune séance.** Test `When_no_screening_exists_Then_the_movie_list_is_empty` : le repository renvoie une liste vide ; attendre `result.Movies` vide (et non une erreur). Le message explicite est affiché par le front à partir de cette liste vide.
+- **Cycle 4 – sans date.** Test `When_no_date_is_chosen_Then_today_is_used` : requête avec `Date` nul ; l'horloge simulée est réglée sur le 18 juillet 2026 (fuseau local fixé avec `SetLocalTimeZone`) ; vérifier que le repository est appelé pour le 18 juillet. Code : `query.Date ?? DateOnly.FromDateTime(timeProvider.GetLocalNow().DateTime)`.
+- **Cycle 5 – ordre chronologique.** Test `When_a_movie_has_several_screenings_Then_they_are_sorted_by_time` : le repository renvoie une séance de 21 h avant une séance de 18 h 30 ; attendre 18 h 30 puis 21 h. Code : tri sur `StartsAt`.
+
+Point à retenir pour la production : « aujourd'hui » dépend du fuseau horaire. Un serveur en UTC verrait un autre jour que Paris en soirée. Prévoir plus tard un fuseau configuré pour le cinéma (à traiter avec le déploiement).
+
+*À quoi la sous-étape a servi : à compléter le comportement de l'US 1.1 critère par critère (date choisie, aucune séance, date du jour par défaut, ordre chronologique), un cycle rouge, vert, refactor à la fois. Pourquoi : avancer par petits pas garde les tests verts entre deux cycles et limite le débogage ; à la fin, chaque critère d'acceptation est couvert par un test qui sert de non-régression.*
+
+#### Étape 5f – Clôture de l'étape
+
+Contrôle de la suite complète et de la couverture du projet de tests :
+```bash
+dotnet test
+dotnet test --collect:"XPlat Code Coverage"
+```
+Publier la branche et ouvrir la Pull Request vers `dev` :
+```bash
+git push -u origin feature/us-1-1-view-schedule
+```
+La Pull Request n'est fusionnée que lorsque tous les tests sont verts. L'US 1.1 sera terminée après la suite décrite ci-dessous.
+
+**Suite de l'US 1.1, à détailler après l'étape 7 (base de données)** : implémentation de `IScreeningReadRepository` dans Infrastructure avec un test d'intégration sur PostgreSQL (le filtre par jour y est vérifié), enregistrement des gestionnaires dans l'injection de dépendances, endpoint Minimal API de consultation de la programmation, documentation Swagger, puis fusion de la Pull Request.
+
+*À quoi la sous-étape a servi : à vérifier que toute la suite de tests passe, à mesurer la couverture et à publier la branche pour la Pull Request, en notant ce qui reste à faire pour terminer l'US 1.1 (repository réel, endpoint, Swagger). Pourquoi : seul du code testé entre dans `dev` ; la couverture est un livrable du Dossier 3 ; découper l'US en deux temps permet de développer la logique métier avant que la base de données existe.*
+
+- **Vérification :** `dotnet test --filter "US=1.1"` affiche 5 tests réussis ; l'historique de la branche montre pour chaque cycle un commit rouge, un commit vert et un commit de refactor ; aucun nom en français dans le code. Commits : ______. PR : ______.
+
+*À quoi l'étape a servi : à poser la façon d'écrire les cas d'usage (commande qui modifie, requête qui lit), rangés par fonctionnalité, et à dérouler pour la première fois le cycle TDD sur une vraie règle du Grand Cinéma, en partant des critères d'acceptation. Pourquoi : écrire le test avant le code force à penser le comportement attendu, laisse une documentation vivante de la story et garantit la non-régression ; ranger par fonctionnalité regroupe tout ce qui concerne un cas d'usage au même endroit ; la séparation en couches permet de tester sans base de données, et le faire sans bibliothèque CQRS évite une dépendance payante tout en restant simple à expliquer à l'oral.*
 
 ### Étape 6 – Packages et base de données locale [ ]
 - **Quoi :** ajouter EF Core et PostgreSQL, installer l'outil dotnet-ef, décrire PostgreSQL dans un fichier docker-compose, garder le mot de passe hors de Git.
@@ -313,9 +554,7 @@ Packages :
 dotnet add src/GrandCinema.Infrastructure package Microsoft.EntityFrameworkCore
 dotnet add src/GrandCinema.Infrastructure package Npgsql.EntityFrameworkCore.PostgreSQL
 dotnet add src/GrandCinema.Api package Microsoft.EntityFrameworkCore.Design
-dotnet add tests/GrandCinema.Application.Tests package Shouldly
 ```
-(Éviter FluentAssertions : sa version 8 est commerciale.)
 
 Outil en ligne de commande dotnet-ef, installé localement au dépôt via un manifeste :
 ```bash
@@ -374,18 +613,18 @@ git push -u origin chore/database-setup
 *À quoi l'étape a servi : à brancher l'application sur une vraie base PostgreSQL locale, avec les outils de migration, sans exposer de mot de passe. Pourquoi : travailler sur la même technologie que la production (RDS PostgreSQL au Bloc 1) évite les surprises au déploiement ; garder les secrets hors du dépôt public est une exigence de sécurité.*
 
 ### Étape 7 – Modèle de données (D1 Q2) [ ]
-- **Quoi :** modéliser sept tables à partir des profils et EPICs du Bloc 1 (identifiants GUID) :
-  - Users : adresse e-mail unique, mot de passe haché, nom, prénom, rôle (Spectateur, Caissier, Contrôleur, Responsable), date de création ;
-  - Films : titre, synopsis, durée en minutes, genre, URL de l'affiche ;
-  - Salles : nom unique, capacité ;
-  - Places : salle, rangée, numéro ; combinaison salle-rangée-numéro unique ;
-  - Séances : film, salle, début, prix ; index sur salle et début ;
-  - Réservations : utilisateur, séance, statut (En attente de paiement, Confirmée, Expirée, Annulée), date de création, date d'expiration, montant total ;
-  - Places réservées : réservation, séance, place ; clé primaire sur réservation et place ; **contrainte d'unicité sur séance et place**.
-- **Pourquoi :** l'énoncé cite cinq tables ; les deux ajoutées (Salles et Places réservées) respectent la troisième forme normale et portent la capacité par salle. La contrainte d'unicité sur séance et place garantit la non-double vente au niveau de la base, même en cas de bug applicatif. À l'expiration ou à l'annulation, les lignes de places réservées sont supprimées pour libérer les places ; le statut conserve l'historique.
+- **Quoi :** modéliser sept tables à partir des profils et EPICs du Bloc 1 (identifiants GUID ; noms anglais, correspondance française entre parenthèses) :
+  - `Users` (utilisateurs) : Email unique, PasswordHash, LastName, FirstName, Role (`UserRole` : Customer, Cashier, TicketInspector, Manager), CreatedAt ;
+  - `Movies` (films) : Title, Synopsis, DurationMinutes, Genre, PosterUrl ;
+  - `Rooms` (salles) : Name unique, Capacity ;
+  - `Seats` (places) : RoomId, Row, Number ; combinaison RoomId-Row-Number unique ;
+  - `Screenings` (séances) : MovieId, RoomId, StartsAt, Price ; index sur RoomId et StartsAt ;
+  - `Reservations` (réservations) : UserId, ScreeningId, Status (`ReservationStatus` : PendingPayment, Confirmed, Expired, Cancelled), CreatedAt, ExpiresAt, TotalAmount ;
+  - `ReservedSeats` (places réservées) : ReservationId, ScreeningId, SeatId ; clé primaire sur ReservationId et SeatId ; **contrainte d'unicité sur ScreeningId et SeatId**.
+- **Pourquoi :** l'énoncé cite cinq tables ; les deux ajoutées (Rooms et ReservedSeats) respectent la troisième forme normale et portent la capacité par salle. La contrainte d'unicité sur ScreeningId et SeatId garantit la non-double vente au niveau de la base, même en cas de bug applicatif. À l'expiration ou à l'annulation, les lignes de ReservedSeats sont supprimées pour libérer les places ; le statut conserve l'historique.
 - **Point de vigilance :** une place doit appartenir à la salle de la séance. Ce contrôle ne se fait pas par clé étrangère : il est assuré dans le gestionnaire de réservation et couvert par un test.
 
-Règles de mise en œuvre : écrire les entités dans Domain sans attribut lié à EF ; configurer en Fluent API et placer le DbContext dans Infrastructure.
+Règles de mise en œuvre : compléter les entités de `Domain/Entities` (Movie, Room et Screening existent depuis l'étape 5) et ajouter les autres, sans attribut lié à EF ; placer les énumérations dans `Domain/Enums` ; configurer en Fluent API et placer le DbContext dans Infrastructure.
 
 ```bash
 git switch -c chore/database-schema dev
@@ -443,6 +682,72 @@ dotnet test
 
 ---
 
+## Référence – Parcours d'une requête dans le code (US 1.1)
+
+Exemple : le visiteur ouvre la programmation du 18 juillet dans le front Angular, qui appelle `GET /api/schedule?date=2026-07-18`.
+
+```text
+Angular                GET /api/schedule?date=2026-07-18
+   │
+   ▼
+┌─ Api ─────────────────────────────────────────────────────────────┐
+│ 1. Endpoint Minimal API                                           │
+│    lit la date dans l'URL → crée GetScheduleQuery(2026-07-18)     │
+│    demande un IQueryHandler<GetScheduleQuery, ScheduleDto>        │
+└───────────────┬───────────────────────────────────────────────────┘
+                │ l'injection de dépendances fournit GetScheduleHandler
+                ▼
+┌─ Application ─────────────────────────────────────────────────────┐
+│ 2. GetScheduleHandler.Handle(query)                               │
+│    date = query.Date, ou aujourd'hui via TimeProvider             │
+│    appelle IScreeningReadRepository.GetByDateAsync(date)  ──────┐ │
+│                                                                 │ │
+│ 4. reçoit des entités Screening                          ◄────┐ │ │
+│    les regroupe par film, les trie par heure                  │ │ │
+│    construit et renvoie un ScheduleDto                        │ │ │
+└───────────────┬───────────────────────────────────────────────┼─┼─┘
+                │                                               │ │
+                │                     ┌─ Infrastructure ────────┼─▼─┐
+                │                     │ 3. ScreeningReadRepository  │
+                │                     │    requête LINQ (EF Core)   │
+                │                     │    → SQL → PostgreSQL       │
+                │                     │    → lignes → entités       │
+                │                     └─────────────────────────────┘
+                ▼
+┌─ Api ─────────────────────────────────────────────────────────────┐
+│ 5. Results.Ok(scheduleDto) → sérialisé en JSON → HTTP 200         │
+└───────────────────────────────────────────────────────────────────┘
+   │
+   ▼
+Angular affiche les films et leurs horaires
+```
+
+1. **Endpoint (Api).** Reçoit la requête HTTP, extrait la date de l'URL et la transforme en `GetScheduleQuery`. Aucune logique métier : il traduit le HTTP en requête CQRS. Il ne crée jamais le handler lui-même : il demande l'interface `IQueryHandler<GetScheduleQuery, ScheduleDto>` et l'**injection de dépendances** fournit l'objet concret. Les correspondances interface → classe sont déclarées une fois au démarrage, dans `Program.cs`. Le conteneur construit toute la chaîne : le handler demande un repository et un `TimeProvider`, le repository demande le `DbContext`, et ainsi de suite. Durée de vie `Scoped` : une instance par requête HTTP, donc un seul `DbContext` partagé pendant toute la requête.
+2. **Handler (Application).** Fixe la date (celle demandée, sinon aujourd'hui) et appelle le repository. Il ne connaît que l'interface `IScreeningReadRepository` : il ignore que PostgreSQL existe.
+3. **Repository (Infrastructure).** Traduit la demande métier en requête EF Core. EF Core génère le SQL (un `SELECT` avec deux jointures, vers les films et les salles, et un filtre sur l'heure de début), l'envoie à PostgreSQL et reconstruit des entités `Screening` à partir des lignes reçues. Deux choix à justifier :
+   - filtre en intervalle « supérieur ou égal au début du jour et strictement inférieur au lendemain » : PostgreSQL peut utiliser l'index sur `StartsAt` ;
+   - `AsNoTracking` : EF Core ne surveille pas des objets qui ne seront pas modifiés, ce qui est plus rapide en lecture.
+4. **Retour dans le handler.** Regroupe les séances par film, les trie par heure et construit le `ScheduleDto`. Les entités ne sont jamais renvoyées au front : le DTO ne contient que ce que l'écran affiche, n'expose pas le modèle interne et évite les références circulaires lors de la sérialisation JSON.
+5. **Retour dans l'endpoint.** `Results.Ok(...)` produit une réponse HTTP 200 ; ASP.NET Core sérialise le DTO en JSON.
+
+La donnée change de forme à chaque frontière :
+
+| Étape | Forme de la donnée |
+|---|---|
+| Entrée HTTP | `?date=2026-07-18` (texte) |
+| Api → Application | `GetScheduleQuery` |
+| Infrastructure ↔ PostgreSQL | requête SQL et lignes de tables |
+| Infrastructure → Application | entités `Screening` |
+| Application → Api | `ScheduleDto` |
+| Sortie HTTP | JSON |
+
+Lien avec les tests :
+- **tests unitaires (étape 5)** : le parcours commence directement au point 2. Le test crée lui-même le handler, et la doublure `Mock<IScreeningReadRepository>` remplace le point 3 ;
+- **test d'intégration (après l'étape 7)** : vérifie le point 3 avec une vraie base PostgreSQL ;
+- **endpoint et Swagger (après l'étape 7)** : mettent en place les points 1 et 5.
+
+*À quoi sert cette section : à avoir sous les yeux le trajet complet d'une requête, de l'URL appelée par Angular jusqu'à PostgreSQL et retour, en sachant dans quelle couche se trouve chaque traitement. Pourquoi : c'est une question classique de soutenance (« décrivez le parcours d'une requête dans votre application ») ; ce schéma montre concrètement le rôle de chaque couche de la Clean Architecture, de l'injection de dépendances et des abstractions.*
+
 ## Aide-mémoire des commandes récurrentes
 ```bash
 dotnet build                                              # compiler
@@ -459,11 +764,69 @@ git push -u origin <branche>                              # publier une branche
 - **Pourquoi une contrainte d'unicité et une transaction ?** La contrainte garantit l'intégrité même en cas d'erreur de code ; la transaction permet une gestion d'erreur propre et un message clair à l'utilisateur.
 - **Pourquoi sept tables et non cinq ?** Normalisation (troisième forme normale) et capacité décrite par salle.
 - **Pourquoi pas MediatR ?** Licence commerciale depuis 2025, et le besoin est couvert par deux interfaces simples.
+- **Pourquoi le code est-il en anglais alors que le MCD est en français ?** L'anglais est la langue de l'écosystème .NET ; une seule langue évite les noms hybrides, et le tableau de correspondance en tête de ce journal fait le lien avec le Bloc 1.
+- **Pourquoi ranger la couche Application par fonctionnalité ?** Tout ce qui concerne un cas d'usage (requête ou commande, gestionnaire, DTO) est au même endroit, et ajouter une story ne touche qu'un dossier ; les interfaces partagées (repositories) restent dans Abstractions pour qu'une fonctionnalité ne dépende pas d'une autre.
+- **Décrivez le parcours d'une requête dans votre application.** Voir la section « Référence – Parcours d'une requête dans le code » : endpoint (Api), handler (Application), repository (Infrastructure), PostgreSQL, puis retour en DTO et en JSON.
+- **Pourquoi un repository pour la programmation et une projection SQL pour le suivi des réservations ?** La programmation lit peu de données et sa logique (regroupement, tri, date par défaut) se teste en unitaire dans le handler ; le suivi calcule des agrégats, qu'il vaut mieux faire calculer par PostgreSQL que charger en entités. La règle est écrite dans l'ADR 0001 (`docs/adr`).
 - **Pourquoi Clean Architecture ?** Domaine indépendant du framework et de la base, testabilité, cohérence avec l'architecture modulaire et évolutive du Bloc 1.
 
 ## Phases suivantes (à compléter)
 - Phase 2 : authentification (US 2.1), Swagger, première user story complète avec feature branch et Pull Request.
-- Phase 3 : consultation des séances et places restantes (US 1.1, 2.2).
+- Phase 3 : fin de l'US 1.1 (repository, endpoint, Swagger) et places restantes (US 2.2).
 - Phase 4 : réservation avec verrouillage et expiration (US 2.3), bug de double réservation, test de reproduction et correctif.
-- Phase 5 : programmation et suivi des réservations (US 5.2, 5.3).
+- Phase 5 : programmation et suivi des réservations (US 5.2, 5.3) ; avant l'US 5.3, rédiger l'ADR de la stratégie de lecture (détaillé ci-dessous).
 - Phase 6 : tests unitaires, couverture, SonarCloud, déploiement.
+
+### Phase 5 – Étape préalable à l'US 5.3 : ADR de la stratégie de lecture [ ]
+- **Quoi :** rédiger un ADR (Architecture Decision Record), c'est-à-dire une fiche courte qui consigne une décision d'architecture : son contexte, la décision, les alternatives écartées et les conséquences. Ici : quand le côté lecture passe par un repository (entités) et quand il passe par une projection SQL directe en DTO.
+- **Pourquoi :** l'US 5.3 (suivi des réservations) introduit des lectures d'agrégats (comptages, totaux), pour lesquelles charger toutes les réservations en entités serait du gaspillage. Le projet va donc mélanger deux approches de lecture : ce mélange n'est sain que si la règle est écrite, connue et justifiée, et non laissée au choix du moment. L'ADR répond aussi aux questions D2 Q1 et Q4 (bonnes pratiques) : il prouve que les choix d'architecture sont réfléchis et tracés.
+
+Branche de travail :
+```bash
+git switch -c docs/adr-read-side-strategy dev
+mkdir -p docs/adr
+```
+
+Créer `docs/adr/0001-read-side-strategy.md` (nom de fichier en anglais, contenu en français) avec les rubriques suivantes, au format de Michael Nygard, le plus répandu :
+
+```markdown
+# ADR 0001 – Stratégie du côté lecture (CQRS)
+
+- Statut : Accepté
+- Date : <date>
+
+## Contexte
+- CQRS appliqué au niveau des opérations : requêtes et commandes séparées, chacune avec son handler ; un seul modèle (entités du domaine) et une seule base PostgreSQL.
+- Volumes faibles pour la programmation (quelques dizaines de séances par jour).
+- Stratégie de tests du Bloc 2 : TDD, logique des handlers testée en unitaire avec Moq.
+- L'US 5.3 introduit des lectures d'agrégats (nombre de réservations, places vendues, taux de remplissage).
+
+## Décision
+1. Écriture : entités et repository, pour protéger les règles métier (capacité, non-double vente).
+2. Lecture simple d'une entité ou d'une petite liste : repository en lecture seule, nommé `I<Entity>ReadRepository`, placé dans `Abstractions/Persistence`, qui renvoie des entités ; la logique reste dans le handler et se teste en unitaire.
+3. Lecture d'agrégats, de statistiques ou de gros volumes : projection SQL directe en DTO, interface nommée `I<Sujet>Queries`, placée dans `Features/<Feature>/Queries`, implémentée dans `Infrastructure/Persistence/Queries` ; testée en intégration avec PostgreSQL.
+4. Passage d'une lecture du cas 2 au cas 3 uniquement sur un besoin constaté (écran lent, requête lourde), jamais par anticipation.
+
+## Alternatives écartées
+- Tout en repository : charger des centaines d'entités pour n'en garder que des totaux gaspille mémoire et requêtes (US 5.3).
+- Tout en projection : la logique des handlers part dans le SQL et ne se teste plus qu'en intégration, contraire à la stratégie TDD du Bloc 2 ; deux mécanismes à maîtriser dès le départ, sans gain mesurable sur de petits volumes.
+- Bases de lecture et d'écriture séparées (CQRS complet avec événements) : complexité et cohérence différée injustifiées pour ce projet.
+
+## Conséquences
+- Positives : chaque lecture utilise la technique adaptée ; les noms (`ReadRepository` ou `Queries`) indiquent l'approche ; règle connue de tous.
+- Négatives : deux approches à connaître ; les projections exigent des tests d'intégration (base PostgreSQL de test).
+```
+
+Règle de vie d'un ADR : une fois accepté, il n'est plus modifié. Si la décision change, on écrit un nouvel ADR (0002, ...) dont le statut indique qu'il **remplace** le 0001, et le statut du 0001 devient « Remplacé par l'ADR 0002 ». L'historique des décisions reste ainsi lisible.
+
+Enregistrer et intégrer :
+```bash
+git add docs/adr
+git commit -m "docs(adr): add read side strategy decision"
+git push -u origin docs/adr-read-side-strategy
+```
+Ouvrir la Pull Request vers `dev` et la fusionner (voir l'étape 3c).
+
+- **Vérification :** `docs/adr/0001-read-side-strategy.md` est présent sur `dev` ; l'interface de lecture de l'US 5.3 respecte la règle (nom en `Queries`, rangée dans `Features/Reservations/Queries`). PR : ______.
+
+*À quoi l'étape a servi : à écrire noir sur blanc la règle qui décide, pour chaque lecture, entre repository et projection SQL, avec les raisons et les alternatives écartées. Pourquoi : un mélange de techniques n'est acceptable que s'il suit une règle connue ; l'ADR évite les choix arbitraires, guide les développements suivants et montre au jury une démarche d'architecture professionnelle et tracée.*
