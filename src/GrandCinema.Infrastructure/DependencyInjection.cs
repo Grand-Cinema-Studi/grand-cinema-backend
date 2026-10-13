@@ -1,4 +1,6 @@
+using GrandCinema.Application.Abstractions.Persistence;
 using GrandCinema.Infrastructure.Persistence;
+using GrandCinema.Infrastructure.Persistence.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,6 +15,8 @@ public static class DependencyInjection
             ?? throw new InvalidOperationException("Connection string 'Default' is missing.");
 
         services.AddDbContext<GrandCinemaDbContext>(options => options.UseNpgsql(connectionString));
+
+        services.AddScoped<IScreeningReadRepository, ScreeningReadRepository>();
 
         return services;
     }
