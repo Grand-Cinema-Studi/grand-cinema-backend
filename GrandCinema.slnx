@@ -8,5 +8,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/GrandCinema.Application.Tests/GrandCinema.Application.Tests.csproj" />
     <Project Path="tests/GrandCinema.Domain.Tests/GrandCinema.Domain.Tests.csproj" />
+    <Project Path="tests/GrandCinema.Infrastructure.Tests/GrandCinema.Infrastructure.Tests.csproj" />
   </Folder>
 </Solution>

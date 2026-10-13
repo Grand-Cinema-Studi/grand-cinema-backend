@@ -1061,7 +1061,7 @@ namespace GrandCinema.Infrastructure.Tests;
 
 public sealed class PostgreSqlFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder().WithImage("postgres:16").Build();
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:16").Build();
 
     public GrandCinemaDbContext CreateDbContext() =>
         new(new DbContextOptionsBuilder<GrandCinemaDbContext>().UseNpgsql(_container.GetConnectionString()).Options);
@@ -1077,7 +1077,7 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
 }
 ```
 
-`MigrateAsync` applique les vraies migrations : chaque lancement vérifie aussi qu'elles fonctionnent sur une base vide. La signature d'`IAsyncLifetime` ci-dessus est celle de xUnit 2 (version utilisée par les autres projets de tests) ; xUnit 3 utilise `ValueTask`. Si `new PostgreSqlBuilder()` est signalé obsolète, passer l'image au constructeur : `new PostgreSqlBuilder("postgres:16")`.
+`MigrateAsync` applique les vraies migrations : chaque lancement vérifie aussi qu'elles fonctionnent sur une base vide. La signature d'`IAsyncLifetime` ci-dessus est celle de xUnit 2 (version utilisée par les autres projets de tests) ; xUnit 3 utilise `ValueTask`. L'image est passée au constructeur de `PostgreSqlBuilder` : le constructeur sans paramètre est obsolète dans Testcontainers 4.
 
 #### Étape 7 bis b – Rouge : le filtre par jour
 
