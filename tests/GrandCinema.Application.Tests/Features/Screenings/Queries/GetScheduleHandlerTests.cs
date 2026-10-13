@@ -55,4 +55,22 @@ public class GetScheduleHandlerTests
         _screenings.Verify(r => r.GetScreeningsAsync(chosenDay, It.IsAny<CancellationToken>()), Times.Once);
         result.Date.ShouldBe(chosenDay);
     }
+
+    [Fact]
+    [Trait("US", "1.1")]
+    public async Task When_no_screening_exists_Then_the_movie_list_is_empty()
+    {
+        // Arrange
+        var day = new DateOnly(2026, 7, 18);
+        _screenings
+            .Setup(r => r.GetScreeningsAsync(day, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Screening>());
+        var handler = new GetScheduleHandler(_screenings.Object, _time);
+
+        // Act
+        var result = await handler.Handle(new GetScheduleQuery(day));
+
+        // Assert
+        result.Movies.ShouldBeEmpty();
+    }
 }
