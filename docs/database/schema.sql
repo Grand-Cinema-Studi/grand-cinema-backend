@@ -101,3 +101,11 @@ VALUES ('20261013202034_InitialSchema', '10.0.12');
 
 COMMIT;
 
+START TRANSACTION;
+CREATE INDEX "IX_Screenings_StartsAt" ON "Screenings" ("StartsAt");
+
+INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+VALUES ('20261013211024_AddScreeningStartsAtIndex', '10.0.12');
+
+COMMIT;
+
