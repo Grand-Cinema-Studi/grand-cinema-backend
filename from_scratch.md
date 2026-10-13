@@ -434,7 +434,8 @@ Règles du TDD dans ce projet :
 - on n'écrit **aucun code de production sans test rouge** qui l'exige ;
 - chaque test porte l'étiquette de la story (`[Trait("US", "1.1")]`) et un nom construit sur le critère d'acceptation : `When_<situation>_Then_<résultat attendu>` ;
 - structure Arrange / Act / Assert, un seul comportement par test ;
-- les tests de l'application n'utilisent ni base de données ni réseau : le repository est une doublure (Moq).
+- les tests de l'application n'utilisent ni base de données ni réseau : le repository est une doublure (Moq) ;
+- si un nouveau test passe dès son écriture, casser volontairement le code (sans commiter) pour vérifier qu'il échoue, puis le rétablir, et le mentionner dans le message de commit : un test jamais vu rouge peut ne rien tester.
 
 Lancer uniquement les tests de la story :
 
@@ -455,6 +456,7 @@ Critères d'acceptation du Bloc 2, traduits en tests (on écrit la liste avant l
 | Quand aucune séance n'existe pour cette date, un message explicite s'affiche | Cycle 3 : `When_no_screening_exists_Then_the_movie_list_is_empty` (l'affichage du message relève du front) |
 | J'ouvre la programmation (sans choisir de date)                              | Cycle 4 : `When_no_date_is_chosen_Then_today_is_used`                                                      |
 | Séances lisibles dans l'ordre                                                | Cycle 5 : `When_a_movie_has_several_screenings_Then_they_are_sorted_by_time`                               |
+| Les films sont affichés par ordre alphabétique de titre (critère ajouté)     | Cycle 6 : `When_several_movies_exist_Then_they_are_sorted_by_title` (voir l'étape 5e bis)                  |
 
 Remarque : le filtre par jour est réellement exécuté par le repository (requête SQL). Le test du cycle 2 vérifie la bonne transmission de la date ; le filtre lui-même sera vérifié par un **test d'intégration** avec PostgreSQL à la suite de l'étape 7.
 
@@ -580,6 +582,79 @@ Point à retenir pour la production : « aujourd'hui » dépend du fuseau horair
 
 _À quoi la sous-étape a servi : à compléter le comportement de l'US 1.1 critère par critère (date choisie, aucune séance, date du jour par défaut, ordre chronologique), un cycle rouge, vert, refactor à la fois. Pourquoi : avancer par petits pas garde les tests verts entre deux cycles et limite le débogage ; à la fin, chaque critère d'acceptation est couvert par un test qui sert de non-régression._
 
+#### Étape 5e bis – Cycle 6 : tri des films par titre (correctif)
+
+- **Quoi :** couvrir par un test le tri des films par titre (`OrderBy(m => m.Title)` dans `GetScheduleHandler`), présent dans le code sans qu'aucun test ni critère d'acceptation ne l'exige.
+- **Pourquoi :** c'est du code de production sans test, contraire à la règle TDD du projet. Le tri est pourtant utile : sans lui, l'ordre des films dépend de ce que renvoie PostgreSQL, sans garantie, et peut changer d'un appel à l'autre. On le garde, mais on le rend officiel : une règle écrite, puis un test.
+
+1. **Décider de la règle et l'écrire dans le backlog.** C'est une décision du Product Owner : ordre alphabétique de titre (choix actuel) ou ordre de la première séance. Ajouter le critère à l'issue de l'US 1.1 sur GitHub, par exemple : « Les films sont affichés par ordre alphabétique de titre ». Sans critère, le test vérifierait une règle absente de toute spécification.
+
+2. **Créer la branche :**
+
+```bash
+git switch dev
+git pull
+git switch -c test/us-1-1-movies-sorted-by-title dev
+```
+
+3. **Écrire le test** dans `tests/GrandCinema.Application.Tests/Features/Screenings/Queries/GetScheduleHandlerTests.cs` :
+
+```csharp
+[Fact]
+[Trait("US", "1.1")]
+public async Task When_several_movies_exist_Then_they_are_sorted_by_title()
+{
+    // Arrange
+    var day = new DateOnly(2026, 7, 18);
+    var room = new Room { Id = Guid.NewGuid(), Name = "Salle 1", Capacity = 170 };
+    Movie NewMovie(string title) => new()
+    {
+        Id = Guid.NewGuid(), Title = title, Synopsis = "Synopsis", DurationMinutes = 100,
+        Genre = "Drama", ReleaseDate = new DateTime(2025, 1, 1), PosterUrl = "https://example.com/p.jpg"
+    };
+    var startsAt = day.ToDateTime(new TimeOnly(20, 0));
+    _screenings
+        .Setup(r => r.GetScreeningsAsync(day, It.IsAny<CancellationToken>()))
+        .ReturnsAsync(new List<Screening>
+        {
+            new() { Id = Guid.NewGuid(), Room = room, Movie = NewMovie("Zorro"), StartsAt = startsAt, Price = 9m },
+            new() { Id = Guid.NewGuid(), Room = room, Movie = NewMovie("Blue Note"), StartsAt = startsAt, Price = 9m },
+            new() { Id = Guid.NewGuid(), Room = room, Movie = NewMovie("Metropolis"), StartsAt = startsAt, Price = 9m }
+        });
+    var handler = new GetScheduleHandler(_screenings.Object, _time);
+
+    // Act
+    var result = await handler.Handle(new GetScheduleQuery(day));
+
+    // Assert
+    result.Movies.Select(m => m.Title).ShouldBe(new[] { "Blue Note", "Metropolis", "Zorro" });
+}
+```
+
+4. **Vérifier le rouge en cassant volontairement le code.** Le comportement existe déjà, donc le test passe tout de suite : cela ne prouve pas qu'il teste quelque chose. Sans rien commiter, retirer temporairement `.OrderBy(m => m.Title)` du handler, puis lancer :
+
+```bash
+dotnet test --filter "US=1.1"
+```
+
+Résultat attendu : le nouveau test échoue (ordre Zorro, Blue Note, Metropolis). Remettre la ligne, relancer : 6 tests réussis.
+
+5. **Enregistrer, en gardant la trace de la vérification dans le message :**
+
+```bash
+git add tests
+git commit -m "test(us-1.1): movies sorted by title" -m "Verified red by temporarily removing the OrderBy."
+git push -u origin test/us-1-1-movies-sorted-by-title
+```
+
+Ouvrir la Pull Request vers `dev` et la fusionner (voir l'étape 3c).
+
+6. **Pour aller plus loin (facultatif).** `OrderBy(m => m.Title)` compare les titres selon la langue du serveur : sur un serveur en anglais ou en mode « invariant », « Élise » peut passer après « Zorro ». C'est le même piège que le fuseau horaire. Correctif : fixer la comparaison en français avec `StringComparer.Create(CultureInfo.GetCultureInfo("fr-FR"), ignoreCase: true)`, couvert par un test qui ajoute un titre accentué.
+
+- **Vérification :** `dotnet test --filter "US=1.1"` affiche 6 tests réussis ; le critère de tri figure dans l'issue de l'US 1.1 ; le message du commit mentionne la vérification du rouge. PR : **\_\_**.
+
+_À quoi la sous-étape a servi : à corriger un écart à la méthode (du code de production sans test) en le transformant en règle explicite : un critère d'acceptation validé, puis un test dont on a prouvé qu'il échoue sans le code. Pourquoi : un test qui n'a jamais été vu rouge peut ne rien tester ; casser volontairement le code est le moyen simple de s'en assurer quand le comportement existe déjà, et la traçabilité critère → test reste complète pour le jury._
+
 #### Étape 5f – Clôture de l'étape
 
 Contrôle de la suite complète et de la couverture du projet de tests :
@@ -605,7 +680,7 @@ La Pull Request n'est fusionnée que lorsque tous les tests sont verts. L'US 1.1
 
 _À quoi la sous-étape a servi : à vérifier que toute la suite de tests passe, à mesurer la couverture et à publier la branche pour la Pull Request, en notant ce qui reste à faire pour terminer l'US 1.1 (repository réel, endpoint, Swagger). Pourquoi : seul du code testé entre dans `dev` ; la couverture est un livrable du Dossier 3 ; découper l'US en deux temps permet de développer la logique métier avant que la base de données existe._
 
-- **Vérification :** `dotnet test --filter "US=1.1"` affiche 5 tests réussis ; l'historique de la branche montre pour chaque cycle un commit rouge, un commit vert et un commit de refactor ; aucun nom en français dans le code. Commits : **\_\_**. PR : **\_\_**.
+- **Vérification :** `dotnet test --filter "US=1.1"` affiche 6 tests réussis (5, puis 6 après l'étape 5e bis) ; l'historique de la branche montre pour chaque cycle un commit rouge, un commit vert et un commit de refactor ; aucun nom en français dans le code. Commits : **\_\_**. PR : **\_\_**.
 
 _À quoi l'étape a servi : à poser la façon d'écrire les cas d'usage (commande qui modifie, requête qui lit), rangés par fonctionnalité, et à dérouler pour la première fois le cycle TDD sur une vraie règle du Grand Cinéma, en partant des critères d'acceptation. Pourquoi : écrire le test avant le code force à penser le comportement attendu, laisse une documentation vivante de la story et garantit la non-régression ; ranger par fonctionnalité regroupe tout ce qui concerne un cas d'usage au même endroit ; la séparation en couches permet de tester sans base de données, et le faire sans bibliothèque CQRS évite une dépendance payante tout en restant simple à expliquer à l'oral._
 
