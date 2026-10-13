@@ -120,4 +120,34 @@ public class GetScheduleHandlerTests
         var movieSchedule = result.Movies.ShouldHaveSingleItem();
         movieSchedule.Screenings.Select(s => s.StartsAt).ShouldBe(new[] { evening, night });
     }
+
+    [Fact]
+    [Trait("US", "1.1")]
+    public async Task When_several_movies_exist_Then_they_are_sorted_by_title()
+    {
+        // Arrange
+        var day = new DateOnly(2026, 7, 18);
+        var room = new Room { Id = Guid.NewGuid(), Name = "Salle 1", Capacity = 170 };
+        Movie NewMovie(string title) => new()
+        {
+            Id = Guid.NewGuid(), Title = title, Synopsis = "Synopsis", DurationMinutes = 100,
+            Genre = "Drama", ReleaseDate = new DateTime(2025, 1, 1), PosterUrl = "https://example.com/p.jpg"
+        };
+        var startsAt = day.ToDateTime(new TimeOnly(20, 0));
+        _screenings
+            .Setup(r => r.GetScreeningsAsync(day, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Screening>
+            {
+                new() { Id = Guid.NewGuid(), Room = room, Movie = NewMovie("Zorro"), StartsAt = startsAt, Price = 9m },
+                new() { Id = Guid.NewGuid(), Room = room, Movie = NewMovie("Blue Note"), StartsAt = startsAt, Price = 9m },
+                new() { Id = Guid.NewGuid(), Room = room, Movie = NewMovie("Metropolis"), StartsAt = startsAt, Price = 9m }
+            });
+        var handler = new GetScheduleHandler(_screenings.Object, _time);
+
+        // Act
+        var result = await handler.Handle(new GetScheduleQuery(day));
+
+        // Assert
+        result.Movies.Select(m => m.Title).ShouldBe(new[] { "Blue Note", "Metropolis", "Zorro" });
+    }
 }
