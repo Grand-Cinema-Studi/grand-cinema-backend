@@ -19,7 +19,7 @@ public class GetScheduleHandlerTests
         // Arrange
         var day = new DateOnly(2026, 7, 18);
         var room = new Room { Id = Guid.NewGuid(), Name = "Salle 1", Capacity = 170 };
-        var movie = new Movie { Id = Guid.NewGuid(), Title = "Blue Note", Synopsis = "A documentary about the jazz musician", DurationMinutes = 136, Genre = "Documentary", ReleaseDate = new DateTime(2023, 10, 1), PosterUrl = "https://example.com/poster.jpg" };
+        var movie = new Movie { Id = Guid.NewGuid(), Title = "Blue Note", Synopsis = "A documentary about the jazz musician", DurationMinutes = 136, Genre = "Documentary", ReleaseDate = new DateOnly(2023, 10, 1), PosterUrl = "https://example.com/poster.jpg" };
         var startsAt = day.ToDateTime(new TimeOnly(18, 30));
         _screenings
             .Setup(r => r.GetScreeningsAsync(day, It.IsAny<CancellationToken>()))
@@ -101,7 +101,7 @@ public class GetScheduleHandlerTests
         // Arrange
         var day = new DateOnly(2026, 7, 18);
         var room = new Room { Id = Guid.NewGuid(), Name = "Salle 1", Capacity = 170 };
-        var movie = new Movie { Id = Guid.NewGuid(), Title = "Blue Note", Synopsis = "A documentary about the jazz musician", DurationMinutes = 136, Genre = "Documentary", ReleaseDate = new DateTime(2023, 10, 1), PosterUrl = "https://example.com/poster.jpg" };
+        var movie = new Movie { Id = Guid.NewGuid(), Title = "Blue Note", Synopsis = "A documentary about the jazz musician", DurationMinutes = 136, Genre = "Documentary", ReleaseDate = new DateOnly(2023, 10, 1), PosterUrl = "https://example.com/poster.jpg" };
         var evening = day.ToDateTime(new TimeOnly(18, 30));
         var night = day.ToDateTime(new TimeOnly(21, 0));
         _screenings
@@ -131,7 +131,7 @@ public class GetScheduleHandlerTests
         Movie NewMovie(string title) => new()
         {
             Id = Guid.NewGuid(), Title = title, Synopsis = "Synopsis", DurationMinutes = 100,
-            Genre = "Drama", ReleaseDate = new DateTime(2025, 1, 1), PosterUrl = "https://example.com/p.jpg"
+            Genre = "Drama", ReleaseDate = new DateOnly(2025, 1, 1), PosterUrl = "https://example.com/p.jpg"
         };
         var startsAt = day.ToDateTime(new TimeOnly(20, 0));
         _screenings

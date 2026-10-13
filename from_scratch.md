@@ -676,7 +676,7 @@ git push -u origin feature/us-1-1-view-schedule
 
 La Pull Request n'est fusionnée que lorsque tous les tests sont verts. L'US 1.1 sera terminée après la suite décrite ci-dessous.
 
-**Suite de l'US 1.1, à détailler après l'étape 7 (base de données)** : implémentation de `IScreeningReadRepository` dans Infrastructure avec un test d'intégration sur PostgreSQL (le filtre par jour y est vérifié), enregistrement des gestionnaires dans l'injection de dépendances, endpoint Minimal API de consultation de la programmation, documentation Swagger, puis fusion de la Pull Request.
+**Suite de l'US 1.1, après l'étape 7 (base de données)** : implémentation de `IScreeningReadRepository` dans Infrastructure avec un test d'intégration sur PostgreSQL et l'index sur `StartsAt` (étape 7 bis), puis enregistrement des gestionnaires dans l'injection de dépendances, endpoint Minimal API de consultation de la programmation, documentation Swagger, puis fusion de la Pull Request.
 
 _À quoi la sous-étape a servi : à vérifier que toute la suite de tests passe, à mesurer la couverture et à publier la branche pour la Pull Request, en notant ce qui reste à faire pour terminer l'US 1.1 (repository réel, endpoint, Swagger). Pourquoi : seul du code testé entre dans `dev` ; la couverture est un livrable du Dossier 3 ; découper l'US en deux temps permet de développer la logique métier avant que la base de données existe._
 
@@ -768,54 +768,516 @@ git push -u origin chore/database-setup
 
 _À quoi l'étape a servi : à brancher l'application sur une vraie base PostgreSQL locale, avec les outils de migration, sans exposer de mot de passe. Pourquoi : travailler sur la même technologie que la production (RDS PostgreSQL au Bloc 1) évite les surprises au déploiement ; garder les secrets hors du dépôt public est une exigence de sécurité._
 
-### Étape 7 – Modèle de données (D1 Q2) [ ]
+### Étape 7 – Modèle de données (D1 Q2) [x] (13/10/2026)
 
 - **Quoi :** modéliser sept tables à partir des profils et EPICs du Bloc 1 (identifiants GUID ; noms anglais, correspondance française entre parenthèses) :
   - `Users` (utilisateurs) : Email unique, PasswordHash, LastName, FirstName, Role (`UserRole` : Customer, Cashier, TicketInspector, Manager), CreatedAt ;
-  - `Movies` (films) : Title, Synopsis, DurationMinutes, Genre, PosterUrl ;
-  - `Rooms` (salles) : Name unique, Capacity ;
-  - `Seats` (places) : RoomId, Row, Number ; combinaison RoomId-Row-Number unique ;
+  - `Movies` (films) : Title, Synopsis, DurationMinutes, Genre, ReleaseDate, PosterUrl ;
+  - `Rooms` (salles) : Name unique, Capacity (nombre maximal de places, strictement positif) ;
+  - `Seats` (places) : RoomId, Row (lettre du rang), Number ; combinaison RoomId-Row-Number unique ;
   - `Screenings` (séances) : MovieId, RoomId, StartsAt, Price ; index sur RoomId et StartsAt ;
-  - `Reservations` (réservations) : UserId, ScreeningId, Status (`ReservationStatus` : PendingPayment, Confirmed, Expired, Cancelled), CreatedAt, ExpiresAt, TotalAmount ;
+  - `Reservations` (réservations) : UserId, ScreeningId, Status (`ReservationStatus` : PendingPayment, Confirmed, Expired, Cancelled), CreatedAt, ExpiresAt (facultatif), TotalAmount ;
   - `ReservedSeats` (places réservées) : ReservationId, ScreeningId, SeatId ; clé primaire sur ReservationId et SeatId ; **contrainte d'unicité sur ScreeningId et SeatId**.
 - **Pourquoi :** l'énoncé cite cinq tables ; les deux ajoutées (Rooms et ReservedSeats) respectent la troisième forme normale et portent la capacité par salle. La contrainte d'unicité sur ScreeningId et SeatId garantit la non-double vente au niveau de la base, même en cas de bug applicatif. À l'expiration ou à l'annulation, les lignes de ReservedSeats sont supprimées pour libérer les places ; le statut conserve l'historique.
-- **Point de vigilance :** une place doit appartenir à la salle de la séance. Ce contrôle ne se fait pas par clé étrangère : il est assuré dans le gestionnaire de réservation et couvert par un test.
+- **Points de vigilance :** certaines règles ne s'expriment pas par une contrainte de base et sont assurées dans les gestionnaires, couvertes par des tests : une place doit appartenir à la salle de la séance ; le nombre de places d'une salle ne dépasse pas sa `Capacity` (une contrainte `CHECK` ne compte pas les lignes d'une autre table) ; l'adresse e-mail est enregistrée en minuscules, pour que l'unicité ne dépende pas de la casse.
 
-Règles de mise en œuvre : compléter les entités de `Domain/Entities` (Movie, Room et Screening existent depuis l'étape 5) et ajouter les autres, sans attribut lié à EF ; placer les énumérations dans `Domain/Enums` ; configurer en Fluent API et placer le DbContext dans Infrastructure.
+Écarts assumés par rapport au premier modèle :
+
+- `Movies.ReleaseDate` ajouté, en `DateOnly` (type `date` en base) ;
+- `Movies.Synopsis` et `Movies.PosterUrl` obligatoires : un film est publié complet ;
+- `Rooms.Capacity` conservé comme nombre maximal de places, avec une contrainte `CHECK (Capacity > 0)` ;
+- `Reservations.ExpiresAt` facultatif : une réservation confirmée n'expire plus.
+
+Règles de mise en œuvre : compléter les entités de `Domain/Entities` (Movie, Room et Screening existent depuis l'étape 5) et ajouter les autres, sans attribut lié à EF ; placer les énumérations dans `Domain/Enums` ; configurer en Fluent API ; placer le DbContext, les configurations et les migrations dans `Infrastructure/Persistence`.
 
 ```bash
 git switch -c chore/database-schema dev
-# écrire les entités (Domain), le DbContext et les configurations (Infrastructure)
 ```
 
-Créer la migration initiale et l'appliquer à la base :
+#### Étape 7a – Entités et énumérations (Domain)
+
+Dans `src/GrandCinema.Domain/Enums/` (espace de noms `GrandCinema.Domain.Enums`), un fichier par énumération : `UserRole` et `ReservationStatus`.
+
+Dans `src/GrandCinema.Domain/Entities/`, une classe par entité, en C# pur :
+
+- les montants (`Price`, `TotalAmount`) en `decimal`, jamais en `float` (type binaire approximatif, erreurs d'arrondi sur les totaux) ;
+- le mot de passe sous le nom `PasswordHash` : la propriété ne contient jamais le mot de passe en clair ;
+- chaque relation porte sa clé étrangère (`MovieId`, `RoomId`, `UserId`, `ScreeningId`, `SeatId`, `ReservationId`), sans `required` (un `Guid` vide passerait quand même) ;
+- les propriétés de navigation sont initialisées à `null!` (`public Room Room { get; set; } = null!;`), et non `required`, pour pouvoir créer une entité à partir des seuls identifiants ;
+- les collections sont initialisées (`= new List<Seat>();`) et ne sont donc jamais nulles : `Room.Seats`, `Reservation.ReservedSeats` ;
+- `ReservedSeat` n'a pas d'`Id` propre (clé composite) ; il a les navigations `Reservation` et `Seat`, et seulement la clé étrangère `ScreeningId`, qui sert à la contrainte anti-double-vente.
+
+Le passage de `ReleaseDate` en `DateOnly` se répercute sur `MovieScheduleDto` et sur les données des tests de l'US 1.1. Contrôle :
+
+```bash
+dotnet build
+dotnet test
+```
+
+#### Étape 7b – DbContext et configurations (Infrastructure)
+
+Arborescence :
+
+```text
+src/GrandCinema.Infrastructure/
+├── DependencyInjection.cs        ← étape 7c
+└── Persistence/
+    ├── GrandCinemaDbContext.cs
+    ├── Configurations/           ← une classe IEntityTypeConfiguration<T> par entité
+    └── Migrations/               ← généré par dotnet ef (étape 7d), ne pas créer
+```
+
+`src/GrandCinema.Infrastructure/Persistence/GrandCinemaDbContext.cs` :
+
+```csharp
+using GrandCinema.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace GrandCinema.Infrastructure.Persistence;
+
+public class GrandCinemaDbContext : DbContext
+{
+    public GrandCinemaDbContext(DbContextOptions<GrandCinemaDbContext> options) : base(options)
+    {
+    }
+
+    public DbSet<User> Users => Set<User>();
+    public DbSet<Movie> Movies => Set<Movie>();
+    public DbSet<Room> Rooms => Set<Room>();
+    public DbSet<Seat> Seats => Set<Seat>();
+    public DbSet<Screening> Screenings => Set<Screening>();
+    public DbSet<Reservation> Reservations => Set<Reservation>();
+    public DbSet<ReservedSeat> ReservedSeats => Set<ReservedSeat>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(GrandCinemaDbContext).Assembly);
+    }
+}
+```
+
+Le constructeur qui reçoit `DbContextOptions` permet l'enregistrement par injection de dépendances (étape 7c) ; le nom de chaque `DbSet` devient le nom de la table ; `ApplyConfigurationsFromAssembly` charge automatiquement toutes les classes de `Configurations/`.
+
+Modèle d'une configuration, `Configurations/ScreeningConfiguration.cs` :
+
+```csharp
+using GrandCinema.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+namespace GrandCinema.Infrastructure.Persistence.Configurations;
+
+public sealed class ScreeningConfiguration : IEntityTypeConfiguration<Screening>
+{
+    public void Configure(EntityTypeBuilder<Screening> builder)
+    {
+        builder.HasKey(s => s.Id);
+
+        builder.Property(s => s.StartsAt).HasColumnType("timestamp without time zone");
+        builder.Property(s => s.Price).HasPrecision(10, 2);
+
+        builder.HasOne(s => s.Movie).WithMany().HasForeignKey(s => s.MovieId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(s => s.Room).WithMany().HasForeignKey(s => s.RoomId).OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(s => new { s.RoomId, s.StartsAt });
+    }
+}
+```
+
+Les autres configurations, sur le même modèle :
+
+| Configuration | Règles |
+|---|---|
+| `MovieConfiguration` | `Title` 200, `Genre` 50, `PosterUrl` 500 caractères ; `Synopsis` sans limite (`text`) |
+| `RoomConfiguration` | `Name` 50 caractères, unique ; `ToTable(t => t.HasCheckConstraint("CK_Rooms_Capacity", "\"Capacity\" > 0"))` |
+| `SeatConfiguration` | `Row` 5 caractères ; relation `HasOne(s => s.Room).WithMany(r => r.Seats)` ; index unique `(RoomId, Row, Number)` |
+| `UserConfiguration` | `Email` 256, unique ; `PasswordHash` 256 ; `FirstName` et `LastName` 100 ; `Role` en texte : `HasConversion<string>().HasMaxLength(20)` |
+| `ReservationConfiguration` | `Status` en texte (20) ; `TotalAmount` `HasPrecision(10, 2)` ; clés étrangères vers `User` et `Screening` |
+| `ReservedSeatConfiguration` | clé primaire `HasKey(rs => new { rs.ReservationId, rs.SeatId })` ; clé étrangère sans navigation `HasOne<Screening>().WithMany().HasForeignKey(rs => rs.ScreeningId)` ; **index unique `(ScreeningId, SeatId)`** |
+
+Choix communs :
+
+- pas de `IsRequired()` : avec la nullabilité activée, une propriété non nullable devient déjà une colonne `NOT NULL` ;
+- suppressions en `DeleteBehavior.Restrict` partout, sauf `ReservedSeats → Reservations` en `Cascade` (supprimer une réservation libère ses places) : on ne supprime pas par accident un film ou une salle encore référencés ;
+- énumérations stockées en texte : lisibles en SQL, et insensibles à un changement d'ordre des valeurs dans le code ;
+- dates : Npgsql mappe un `DateTime` en `timestamp with time zone` et refuse alors d'écrire une date qui n'est pas en UTC. `StartsAt` est l'heure locale du cinéma, d'où `timestamp without time zone` ; `CreatedAt` et `ExpiresAt` sont des instants techniques, gardés en `timestamp with time zone` et toujours écrits en UTC (`DateTime.UtcNow`) ; `ReleaseDate` (`DateOnly`) devient `date`.
+
+#### Étape 7c – Enregistrer le DbContext dans l'API
+
+`dotnet ef`, lancé avec `--startup-project src/GrandCinema.Api`, construit le DbContext à partir du `Program.cs` de l'API. Sans enregistrement, la migration échoue (« Unable to create a DbContext »).
+
+`src/GrandCinema.Infrastructure/DependencyInjection.cs` :
+
+```csharp
+using GrandCinema.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace GrandCinema.Infrastructure;
+
+public static class DependencyInjection
+{
+    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    {
+        var connectionString = configuration.GetConnectionString("Default")
+            ?? throw new InvalidOperationException("Connection string 'Default' is missing.");
+
+        services.AddDbContext<GrandCinemaDbContext>(options => options.UseNpgsql(connectionString));
+
+        return services;
+    }
+}
+```
+
+Dans `src/GrandCinema.Api/Program.cs`, avant `builder.Build()` (après, la liste des services est figée) :
+
+```csharp
+using GrandCinema.Infrastructure;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddInfrastructure(builder.Configuration);
+
+var app = builder.Build();
+```
+
+Aucun paquet à ajouter : les abstractions de configuration et d'injection de dépendances arrivent avec EF Core.
+
+Contrôle :
+
+```bash
+dotnet build
+dotnet ef dbcontext info --project src/GrandCinema.Infrastructure --startup-project src/GrandCinema.Api
+```
+
+Résultat attendu : le type `GrandCinema.Infrastructure.Persistence.GrandCinemaDbContext`, le fournisseur `Npgsql.EntityFrameworkCore.PostgreSQL` et le nom de la base.
+
+_À quoi la sous-étape a servi : à rendre le DbContext disponible pour l'API et pour l'outil de migration, avec la chaîne de connexion des user-secrets. Pourquoi : en Clean Architecture, l'API ne connaît pas les détails de la base ; elle appelle `AddInfrastructure`, et Infrastructure choisit PostgreSQL et EF Core. Cette méthode enregistrera aussi les repositories (étape 7 bis). Le `throw` donne une erreur claire au démarrage si la chaîne manque, par exemple sur une machine où les user-secrets n'ont pas été recréés. `dotnet ef` utilise l'environnement `Development` par défaut, d'où l'accès aux user-secrets._
+
+#### Étape 7d – Migration initiale
+
+PostgreSQL doit tourner :
+
+```bash
+docker compose up -d
+docker compose ps
+```
+
+Générer la migration (cette commande ne se connecte pas à la base : elle compare le modèle au dernier état connu) :
 
 ```bash
 dotnet ef migrations add InitialSchema --project src/GrandCinema.Infrastructure --startup-project src/GrandCinema.Api --output-dir Persistence/Migrations
+```
+
+Trois fichiers sont créés dans `Persistence/Migrations/` : la migration (`Up()` crée, `Down()` annule), ses métadonnées (`.Designer.cs`) et le `GrandCinemaDbContextModelSnapshot.cs`, état du modèle qui sert de point de comparaison à la migration suivante.
+
+**Relire la migration avant de l'appliquer** : les 7 tables, les index uniques (`Email`, `Rooms.Name`, `(RoomId, Row, Number)`, `(ScreeningId, SeatId)`), la contrainte `CHECK`, les types `numeric(10,2)`, `date`, `timestamp without time zone` pour `StartsAt`, les `Restrict` et l'unique `Cascade`. En cas d'erreur, corriger la configuration puis :
+
+```bash
+dotnet ef migrations remove --project src/GrandCinema.Infrastructure --startup-project src/GrandCinema.Api
+```
+
+Appliquer la migration (cette commande se connecte à la base) :
+
+```bash
 dotnet ef database update --project src/GrandCinema.Infrastructure --startup-project src/GrandCinema.Api
 ```
 
-Exporter le script SQL (livrable D1 Q2) et ajouter le schéma entité-relation (par exemple en Mermaid) :
+Vérifier (utilisateur et base : les valeurs `POSTGRES_USER` et `POSTGRES_DB` du `.env`) :
+
+```bash
+dotnet ef migrations list --project src/GrandCinema.Infrastructure --startup-project src/GrandCinema.Api
+dotnet ef migrations has-pending-model-changes --project src/GrandCinema.Infrastructure --startup-project src/GrandCinema.Api
+docker compose exec db psql -U <utilisateur> -d <base> -c "\dt"
+```
+
+Résultats attendus : `InitialSchema` sans la mention « (Pending) » ; « No changes have been made to the model since the last migration » ; les 7 tables et `__EFMigrationsHistory`.
+
+_À quoi la sous-étape a servi : à créer réellement les tables dans PostgreSQL à partir du modèle C#. Pourquoi : la migration est versionnée avec le code, donc le schéma évolue avec lui et se reconstruit à l'identique sur toute machine. Elle n'est pas appliquée au démarrage de l'API (pas de `Database.Migrate()` dans `Program.cs`) : une API qui modifie son schéma en démarrant est risquée en production, par exemple si plusieurs instances démarrent ensemble. En local, on l'applique à la main ; en production, on appliquera le script SQL ou un « migration bundle » lors du déploiement._
+
+#### Étape 7e – Livrables D1 Q2 : script SQL et schéma entité-relation
 
 ```bash
 mkdir -p docs/database
 dotnet ef migrations script --project src/GrandCinema.Infrastructure --startup-project src/GrandCinema.Api -o docs/database/schema.sql
-# créer docs/database/erd.md avec le schéma entité-relation
 ```
 
 (Sous PowerShell uniquement : `mkdir docs/database` suffit.)
 
-Enregistrer :
+L'option `--idempotent` produit un script qui vérifie `__EFMigrationsHistory` et peut être rejoué sans erreur : utile au déploiement, pas nécessaire pour le livrable.
+
+Créer `docs/database/erd.md` : schéma entité-relation en Mermaid (`erDiagram`, affiché directement par GitHub ; dans VS Code, aperçu avec Ctrl+Shift+V et l'extension *Markdown Preview Mermaid Support*), puis le rôle des tables, les contraintes clés, les règles de suppression, les règles vérifiées dans le code et le choix des types de dates.
+
+#### Étape 7f – Enregistrer
 
 ```bash
+dotnet build
+dotnet test
+git status        # ni .env, ni TestResults/, ni bin/, ni obj/
 git add .
 git commit -m "feat(db): add initial schema and migration"
 git push -u origin chore/database-schema
 ```
 
+Ouvrir la Pull Request vers `dev` avec la checklist : la migration s'applique sur une base vide ; `schema.sql` et `erd.md` sont versionnés ; les tests sont verts ; aucun secret n'est commité.
+
 - **Vérification :** la migration s'applique sur une base vide ; le script SQL et le schéma sont versionnés dans docs/database. Commit : **\_\_**.
 
 _À quoi l'étape a servi : à traduire le besoin métier (films, séances, places, réservations, utilisateurs) en tables, avec leur script SQL et leur schéma. Pourquoi : c'est le livrable du D1 Q2 ; la contrainte d'unicité sur séance et place est la première défense contre la double vente, qui sera le bug étudié au Dossier 3._
+
+### Étape 7 bis – Suite de l'US 1.1 : ScreeningReadRepository [ ]
+
+- **Quoi :** implémenter `IScreeningReadRepository` dans Infrastructure avec EF Core, le vérifier par un test d'intégration sur un vrai PostgreSQL, ajouter l'index sur `StartsAt` qu'exige sa requête, puis l'enregistrer dans l'injection de dépendances.
+- **Pourquoi :** le gestionnaire `GetScheduleHandler` est testé avec une doublure (Moq) ; le filtre par jour, lui, s'exécute en SQL et ne peut être prouvé que contre PostgreSQL (remarque de l'étape 5c). L'index existant `(RoomId, StartsAt)` commence par `RoomId` : PostgreSQL ne peut pas s'en servir pour une recherche sur `StartsAt` seul, toutes salles confondues.
+
+```bash
+git switch dev
+git pull
+git switch -c feature/us-1-1-screening-repository dev
+```
+
+#### Étape 7 bis a – Projet de tests d'intégration
+
+```bash
+dotnet new xunit -n GrandCinema.Infrastructure.Tests -o tests/GrandCinema.Infrastructure.Tests
+dotnet sln GrandCinema.slnx add tests/GrandCinema.Infrastructure.Tests
+dotnet add tests/GrandCinema.Infrastructure.Tests reference src/GrandCinema.Infrastructure
+dotnet add tests/GrandCinema.Infrastructure.Tests package Testcontainers.PostgreSql
+dotnet add tests/GrandCinema.Infrastructure.Tests package Shouldly
+rm tests/GrandCinema.Infrastructure.Tests/UnitTest1.cs
+```
+
+Testcontainers démarre un conteneur PostgreSQL jetable le temps des tests (Docker doit tourner) : même moteur qu'en production, sans toucher à la base de développement.
+
+Créer `tests/GrandCinema.Infrastructure.Tests/PostgreSqlFixture.cs`, qui démarre le conteneur une fois pour la classe de tests et y applique les migrations :
+
+```csharp
+using GrandCinema.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+using Testcontainers.PostgreSql;
+
+namespace GrandCinema.Infrastructure.Tests;
+
+public sealed class PostgreSqlFixture : IAsyncLifetime
+{
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder().WithImage("postgres:16").Build();
+
+    public GrandCinemaDbContext CreateDbContext() =>
+        new(new DbContextOptionsBuilder<GrandCinemaDbContext>().UseNpgsql(_container.GetConnectionString()).Options);
+
+    public async Task InitializeAsync()
+    {
+        await _container.StartAsync();
+        await using var db = CreateDbContext();
+        await db.Database.MigrateAsync();
+    }
+
+    public Task DisposeAsync() => _container.DisposeAsync().AsTask();
+}
+```
+
+`MigrateAsync` applique les vraies migrations : chaque lancement vérifie aussi qu'elles fonctionnent sur une base vide. La signature d'`IAsyncLifetime` ci-dessus est celle de xUnit 2 (version utilisée par les autres projets de tests) ; xUnit 3 utilise `ValueTask`. Si `new PostgreSqlBuilder()` est signalé obsolète, passer l'image au constructeur : `new PostgreSqlBuilder("postgres:16")`.
+
+#### Étape 7 bis b – Rouge : le filtre par jour
+
+Créer `tests/GrandCinema.Infrastructure.Tests/Persistence/Repositories/ScreeningReadRepositoryTests.cs` :
+
+```csharp
+using GrandCinema.Domain.Entities;
+using GrandCinema.Infrastructure.Persistence.Repositories;
+using Shouldly;
+
+namespace GrandCinema.Infrastructure.Tests.Persistence.Repositories;
+
+public class ScreeningReadRepositoryTests : IClassFixture<PostgreSqlFixture>
+{
+    private readonly PostgreSqlFixture _database;
+
+    public ScreeningReadRepositoryTests(PostgreSqlFixture database)
+    {
+        _database = database;
+    }
+
+    [Fact]
+    [Trait("US", "1.1")]
+    [Trait("Category", "Integration")]
+    public async Task When_screenings_exist_on_several_days_Then_only_those_of_the_chosen_day_are_returned()
+    {
+        // Arrange
+        var movie = new Movie { Id = Guid.NewGuid(), Title = "Blue Note", Synopsis = "A documentary about the jazz label", DurationMinutes = 136, Genre = "Documentary", ReleaseDate = new DateOnly(2023, 10, 1), PosterUrl = "https://example.com/poster.jpg" };
+        var room = new Room { Id = Guid.NewGuid(), Name = "Salle 1", Capacity = 170 };
+        Screening At(DateTime startsAt) => new() { Id = Guid.NewGuid(), Movie = movie, Room = room, StartsAt = startsAt, Price = 9m };
+
+        await using (var seed = _database.CreateDbContext())
+        {
+            seed.Screenings.AddRange(
+                At(new DateTime(2026, 7, 18, 23, 30, 0)),
+                At(new DateTime(2026, 7, 19, 0, 0, 0)),
+                At(new DateTime(2026, 7, 19, 21, 0, 0)),
+                At(new DateTime(2026, 7, 20, 0, 0, 0)));
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = _database.CreateDbContext();
+        var repository = new ScreeningReadRepository(db);
+
+        // Act
+        var result = await repository.GetScreeningsAsync(new DateOnly(2026, 7, 19));
+
+        // Assert
+        result.Select(s => s.StartsAt).ShouldBe(new[] { new DateTime(2026, 7, 19, 0, 0, 0), new DateTime(2026, 7, 19, 21, 0, 0) }, ignoreOrder: true);
+        result.ShouldAllBe(s => s.Movie.Title == "Blue Note" && s.Room.Name == "Salle 1");
+    }
+}
+```
+
+Points clés du test :
+
+- les séances de 23 h 30 la veille et de minuit le lendemain encadrent la journée : elles vérifient les deux bornes du filtre ;
+- la lecture se fait avec un **nouveau** DbContext : celui qui a inséré les données garde les entités en mémoire et remplirait `Movie` et `Room` même sans `Include`, ce qui masquerait un oubli ;
+- la dernière assertion vérifie que le film et la salle sont chargés, car le gestionnaire s'en sert (titre, nom de salle) ;
+- le trait `Category=Integration` permet de lancer les tests unitaires seuls, sans Docker : `dotnet test --filter "Category!=Integration"`.
+
+Squelette minimal pour compiler, `src/GrandCinema.Infrastructure/Persistence/Repositories/ScreeningReadRepository.cs` :
+
+```csharp
+using GrandCinema.Application.Abstractions.Persistence;
+using GrandCinema.Domain.Entities;
+
+namespace GrandCinema.Infrastructure.Persistence.Repositories;
+
+public sealed class ScreeningReadRepository : IScreeningReadRepository
+{
+    private readonly GrandCinemaDbContext _db;
+
+    public ScreeningReadRepository(GrandCinemaDbContext db)
+    {
+        _db = db;
+    }
+
+    public Task<IReadOnlyList<Screening>> GetScreeningsAsync(DateOnly date, CancellationToken cancellationToken = default)
+        => throw new NotImplementedException();
+}
+```
+
+```bash
+dotnet test --filter "US=1.1"
+```
+
+Résultat attendu : le test d'intégration échoue (`NotImplementedException`), les 6 tests unitaires restent verts.
+
+```bash
+git add .
+git commit -m "test(us-1.1): red - screenings filtered by day in PostgreSQL"
+```
+
+#### Étape 7 bis c – Vert : la requête
+
+```csharp
+using GrandCinema.Application.Abstractions.Persistence;
+using GrandCinema.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace GrandCinema.Infrastructure.Persistence.Repositories;
+
+public sealed class ScreeningReadRepository : IScreeningReadRepository
+{
+    private readonly GrandCinemaDbContext _db;
+
+    public ScreeningReadRepository(GrandCinemaDbContext db)
+    {
+        _db = db;
+    }
+
+    public async Task<IReadOnlyList<Screening>> GetScreeningsAsync(DateOnly date, CancellationToken cancellationToken = default)
+    {
+        var start = date.ToDateTime(TimeOnly.MinValue);
+        var end = start.AddDays(1);
+
+        return await _db.Screenings
+            .AsNoTracking()
+            .Include(s => s.Movie)
+            .Include(s => s.Room)
+            .Where(s => s.StartsAt >= start && s.StartsAt < end)
+            .ToListAsync(cancellationToken);
+    }
+}
+```
+
+- **Intervalle `[début du jour ; lendemain[`** plutôt que `s.StartsAt.Date == ...` : une fonction appliquée à la colonne empêche PostgreSQL d'utiliser un index ; une comparaison directe sur la colonne le permet. La borne de fin est exclue, d'où `<` : minuit le lendemain appartient au jour suivant.
+- **`AsNoTracking`** : lecture seule (côté query du CQRS), EF ne suit pas les entités, ce qui est plus rapide.
+- **`Include`** : charge le film et la salle dans la même requête SQL (jointure), sans requête supplémentaire par séance.
+- Pas de tri ici : il est fait par le gestionnaire et déjà couvert par les tests unitaires (cycles 5 et 6).
+
+```bash
+dotnet test --filter "US=1.1"
+```
+
+Résultat attendu : 7 tests réussis.
+
+```bash
+git add .
+git commit -m "feat(us-1.1): green - screenings filtered by day in PostgreSQL"
+```
+
+#### Étape 7 bis d – Index sur StartsAt
+
+La requête filtre sur `StartsAt` seul. Dans `ScreeningConfiguration`, ajouter :
+
+```csharp
+builder.HasIndex(s => s.StartsAt);
+```
+
+L'index `(RoomId, StartsAt)` est conservé : il servira à vérifier qu'une salle n'a pas deux séances qui se chevauchent.
+
+```bash
+dotnet ef migrations add AddScreeningStartsAtIndex --project src/GrandCinema.Infrastructure --startup-project src/GrandCinema.Api --output-dir Persistence/Migrations
+dotnet ef database update --project src/GrandCinema.Infrastructure --startup-project src/GrandCinema.Api
+dotnet ef migrations script --project src/GrandCinema.Infrastructure --startup-project src/GrandCinema.Api -o docs/database/schema.sql
+dotnet test --filter "US=1.1"
+```
+
+La migration doit contenir un seul `CreateIndex` (`IX_Screenings_StartsAt`). Le test d'intégration rejoue toutes les migrations et reste vert. Mettre à jour la section « Contraintes clés » de `docs/database/erd.md` (index non uniques).
+
+Pour montrer l'index au jury, demander le plan d'exécution. Sur une table presque vide, PostgreSQL préfère lire toute la table : désactiver ce choix le temps de la démonstration.
+
+```bash
+docker compose exec db psql -U <utilisateur> -d <base> -c "SET enable_seqscan = off; EXPLAIN SELECT * FROM \"Screenings\" WHERE \"StartsAt\" >= '2026-07-19' AND \"StartsAt\" < '2026-07-20';"
+```
+
+Résultat attendu : `Index Scan using "IX_Screenings_StartsAt"`.
+
+```bash
+git add .
+git commit -m "feat(db): add index on screening start time"
+```
+
+#### Étape 7 bis e – Enregistrement dans l'injection de dépendances
+
+Dans `AddInfrastructure`, après `AddDbContext` :
+
+```csharp
+services.AddScoped<IScreeningReadRepository, ScreeningReadRepository>();
+```
+
+`Scoped` : une instance par requête HTTP, comme le DbContext qu'elle utilise.
+
+```bash
+dotnet build
+dotnet test --filter "US=1.1"
+git add .
+git commit -m "feat(us-1.1): register screening repository"
+git push -u origin feature/us-1-1-screening-repository
+```
+
+Ouvrir la Pull Request vers `dev`.
+
+- **Vérification :** 7 tests US 1.1 verts, dont le test d'intégration ; la migration `AddScreeningStartsAtIndex` est appliquée ; le plan d'exécution utilise `IX_Screenings_StartsAt`. PR : **\_\_**.
+
+_À quoi l'étape a servi : à brancher le cas d'usage de l'US 1.1 sur la vraie base, et à prouver contre PostgreSQL ce que le test unitaire ne pouvait pas prouver : seules les séances du jour demandé sont renvoyées, bornes comprises, avec leur film et leur salle. Pourquoi : un test d'intégration sur le même moteur qu'en production détecte les erreurs de traduction SQL et de mapping ; l'index est ajouté parce qu'une requête réelle le demande, et le plan d'exécution le prouve._
+
+Reste de l'US 1.1, à détailler ensuite : enregistrement des gestionnaires dans l'injection de dépendances, endpoint Minimal API `GET /api/schedule`, documentation Swagger.
 
 ### Étape 8 – Livrer la phase [ ]
 
@@ -919,9 +1381,12 @@ _À quoi sert cette section : à avoir sous les yeux le trajet complet d'une req
 dotnet build                                              # compiler
 dotnet test                                               # lancer les tests
 dotnet test --collect:"XPlat Code Coverage"               # tests avec couverture (Coverlet)
+dotnet test --filter "Category!=Integration"             # tests unitaires seuls (sans Docker)
 dotnet run --project src/GrandCinema.Api                  # lancer l'API
 docker compose up -d                                      # démarrer PostgreSQL
 docker compose down                                       # arrêter PostgreSQL (les données restent dans le volume)
+dotnet ef migrations add <Nom> --project src/GrandCinema.Infrastructure --startup-project src/GrandCinema.Api --output-dir Persistence/Migrations   # nouvelle migration
+dotnet ef database update --project src/GrandCinema.Infrastructure --startup-project src/GrandCinema.Api                                         # appliquer les migrations
 git switch -c feature/us-<n>-<slug> dev               # nouvelle branche de fonctionnalité
 git push -u origin <branche>                              # publier une branche
 ```

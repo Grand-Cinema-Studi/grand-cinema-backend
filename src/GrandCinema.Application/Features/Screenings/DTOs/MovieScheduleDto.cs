@@ -7,7 +7,7 @@ public record class MovieScheduleDto
     public required string Synopsis { get; init; }
     public required int DurationMinutes { get; init; }
     public required string Genre { get; init; }
-    public required DateTime ReleaseDate { get; init; }
+    public required DateOnly ReleaseDate { get; init; }
     public required string PosterUrl { get; init; }
     public required IReadOnlyList<ScreeningDto> Screenings { get; init; }
 }
