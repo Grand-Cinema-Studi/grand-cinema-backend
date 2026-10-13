@@ -609,7 +609,7 @@ _À quoi la sous-étape a servi : à vérifier que toute la suite de tests passe
 
 _À quoi l'étape a servi : à poser la façon d'écrire les cas d'usage (commande qui modifie, requête qui lit), rangés par fonctionnalité, et à dérouler pour la première fois le cycle TDD sur une vraie règle du Grand Cinéma, en partant des critères d'acceptation. Pourquoi : écrire le test avant le code force à penser le comportement attendu, laisse une documentation vivante de la story et garantit la non-régression ; ranger par fonctionnalité regroupe tout ce qui concerne un cas d'usage au même endroit ; la séparation en couches permet de tester sans base de données, et le faire sans bibliothèque CQRS évite une dépendance payante tout en restant simple à expliquer à l'oral._
 
-### Étape 6 – Packages et base de données locale [ ]
+### Étape 6 – Packages et base de données locale [x]
 
 - **Quoi :** ajouter EF Core et PostgreSQL, installer l'outil dotnet-ef, décrire PostgreSQL dans un fichier docker-compose, garder le mot de passe hors de Git.
 - **Pourquoi :** PostgreSQL est le choix du Bloc 1 (RDS PostgreSQL). Le conteneur reproduit l'environnement de production en local, et les secrets restent hors du dépôt public.
@@ -632,6 +632,8 @@ Outil en ligne de commande dotnet-ef, installé localement au dépôt via un man
 dotnet new tool-manifest
 dotnet tool install dotnet-ef
 ```
+
+_À quoi servent ces commandes : `dotnet new tool-manifest` crée le fichier `dotnet-tools.json` à la racine du dépôt (depuis le SDK .NET 8 ; les SDK plus anciens le plaçaient dans un dossier `.config/`, encore reconnu), un manifeste qui liste les outils .NET du projet avec leur version exacte (vide au départ). `dotnet tool install dotnet-ef`, sans l'option `-g`, installe l'outil localement au dépôt et l'inscrit dans ce manifeste ; il s'appelle ensuite avec `dotnet ef ...`. `dotnet-ef` est l'outil en ligne de commande d'Entity Framework Core : il gère le schéma de la base PostgreSQL à partir des entités (`dotnet ef migrations add InitialCreate` génère une migration, c'est-à-dire le code C# qui crée ou modifie les tables ; `dotnet ef database update` l'applique à la base). Pourquoi local plutôt que global : le manifeste est commité, donc tout le monde (autre développeur, CI, autre machine) utilise la même version de l'outil, réinstallée par un simple `dotnet tool restore` ; et la version de `dotnet-ef` doit correspondre à celle d'EF Core du projet, ce qu'une installation globale ne garantit pas. Penser à commiter `dotnet-tools.json`._
 
 Sur une autre machine après un clone ou un pull :
 
@@ -676,6 +678,8 @@ Chaîne de connexion stockée dans les secrets utilisateur .NET (propres à chaq
 dotnet user-secrets init --project src/GrandCinema.Api
 dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5432;Database=grandcinema;Username=grandcinema;Password=<mot-de-passe>" --project src/GrandCinema.Api
 ```
+
+_Pourquoi les user-secrets plutôt que le seul `.env` : le `.env` est lu par Docker Compose pour configurer le conteneur PostgreSQL, mais ASP.NET Core ne le lit pas nativement (il faudrait ajouter un paquet comme DotNetEnv, exporter les variables à la main avant `dotnet run`, ou lancer l'API dans Docker). ASP.NET Core charge sa configuration depuis `appsettings.json`, les user-secrets (en environnement `Development` uniquement), les variables d'environnement (`ConnectionStrings__Default`) et la ligne de commande. Avantages des user-secrets : intégrés au framework, sans paquet ni code ; stockés hors du dépôt, dans le dossier personnel (`~/.microsoft/usersecrets/<id>/secrets.json`), donc impossibles à commiter par erreur ; lus aussi par `dotnet ef` pour les migrations ; pratique recommandée par Microsoft pour les secrets de développement ; jamais utilisés en production, où l'on passe par des variables d'environnement ou un gestionnaire de secrets AWS. Inconvénient accepté : le mot de passe est écrit à deux endroits (`.env` pour Docker, user-secrets pour .NET) et doit être recréé sur chaque machine. Chaque outil garde ainsi son rôle : `.env` pour Docker, user-secrets pour .NET en développement, variables d'environnement en production._
 
 Enregistrer :
 
