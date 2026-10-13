@@ -19,7 +19,7 @@ public sealed class GetScheduleHandler : IQueryHandler<GetScheduleQuery, Schedul
 
     public async Task<ScheduleDto> Handle(GetScheduleQuery query, CancellationToken cancellationToken = default)
     {
-        var date = query.Date ?? default;
+        var date = query.Date ?? DateOnly.FromDateTime(_timeProvider.GetLocalNow().DateTime);
         var screenings = await _screeningReadRepository.GetScreeningsAsync(date, cancellationToken);
         var movies = screenings
             .GroupBy(s => s.Movie.Id)
