@@ -73,4 +73,24 @@ public class GetScheduleHandlerTests
         // Assert
         result.Movies.ShouldBeEmpty();
     }
+
+    [Fact]
+    [Trait("US", "1.1")]
+    public async Task When_no_date_is_chosen_Then_today_is_used()
+    {
+        // Arrange
+        var today = new DateOnly(2026, 7, 18);
+        _time.SetLocalTimeZone(TimeZoneInfo.FindSystemTimeZoneById("Europe/Paris"));
+        _screenings
+            .Setup(r => r.GetScreeningsAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Screening>());
+        var handler = new GetScheduleHandler(_screenings.Object, _time);
+
+        // Act
+        var result = await handler.Handle(new GetScheduleQuery(null));
+
+        // Assert
+        _screenings.Verify(r => r.GetScreeningsAsync(today, It.IsAny<CancellationToken>()), Times.Once);
+        result.Date.ShouldBe(today);
+    }
 }
