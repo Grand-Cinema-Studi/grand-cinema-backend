@@ -7,6 +7,6 @@ public class Movie
     public required string Synopsis { get; set; }
     public int DurationMinutes { get; set; }
     public required string Genre { get; set; }
-    public DateTime ReleaseDate { get; set; }
+    public DateOnly ReleaseDate { get; set; }
     public required string PosterUrl { get; set; }
 }
