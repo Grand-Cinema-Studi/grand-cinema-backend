@@ -36,4 +36,23 @@ public class GetScheduleHandlerTests
         screening.RoomName.ShouldBe("Salle 1");
         screening.StartsAt.ShouldBe(startsAt);
     }
+
+    [Fact]
+    [Trait("US", "1.1")]
+    public async Task When_a_date_is_chosen_Then_the_repository_is_queried_for_that_day()
+    {
+        // Arrange
+        var chosenDay = new DateOnly(2026, 7, 19);
+        _screenings
+            .Setup(r => r.GetScreeningsAsync(chosenDay, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Screening>());
+        var handler = new GetScheduleHandler(_screenings.Object, _time);
+
+        // Act
+        var result = await handler.Handle(new GetScheduleQuery(chosenDay));
+
+        // Assert
+        _screenings.Verify(r => r.GetScreeningsAsync(chosenDay, It.IsAny<CancellationToken>()), Times.Once);
+        result.Date.ShouldBe(chosenDay);
+    }
 }
