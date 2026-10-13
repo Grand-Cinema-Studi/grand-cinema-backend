@@ -1061,7 +1061,7 @@ namespace GrandCinema.Infrastructure.Tests;
 
 public sealed class PostgreSqlFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder().WithImage("postgres:16").Build();
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:16").Build();
 
     public GrandCinemaDbContext CreateDbContext() =>
         new(new DbContextOptionsBuilder<GrandCinemaDbContext>().UseNpgsql(_container.GetConnectionString()).Options);
@@ -1077,7 +1077,7 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
 }
 ```
 
-`MigrateAsync` applique les vraies migrations : chaque lancement vérifie aussi qu'elles fonctionnent sur une base vide. La signature d'`IAsyncLifetime` ci-dessus est celle de xUnit 2 (version utilisée par les autres projets de tests) ; xUnit 3 utilise `ValueTask`. Si `new PostgreSqlBuilder()` est signalé obsolète, passer l'image au constructeur : `new PostgreSqlBuilder("postgres:16")`.
+`MigrateAsync` applique les vraies migrations : chaque lancement vérifie aussi qu'elles fonctionnent sur une base vide. La signature d'`IAsyncLifetime` ci-dessus est celle de xUnit 2 (version utilisée par les autres projets de tests) ; xUnit 3 utilise `ValueTask`. L'image est passée au constructeur de `PostgreSqlBuilder` : le constructeur sans paramètre est obsolète dans Testcontainers 4.
 
 #### Étape 7 bis b – Rouge : le filtre par jour
 
@@ -1222,6 +1222,8 @@ git commit -m "feat(us-1.1): green - screenings filtered by day in PostgreSQL"
 ```
 
 #### Étape 7 bis d – Index sur StartsAt
+
+_À quoi sert cette sous-étape : à rendre la requête de la programmation plus rapide, sans rien changer à son résultat (le test d'intégration passe déjà sans index). Un index fonctionne comme l'index d'un livre : sans lui, PostgreSQL lit toutes les séances de la table, y compris celles des années passées, pour garder celles du jour demandé ; avec lui, il dispose d'une liste triée par date et heure, va directement au début du jour et s'arrête au lendemain. Pourquoi ici : la programmation est la page la plus consultée du site, et la table `Screenings` ne fait que grandir (les anciennes séances restent pour l'historique des réservations). Pourquoi un nouvel index alors que `(RoomId, StartsAt)` existe : un index composite est trié d'abord par sa première colonne, comme un annuaire trié par nom puis par prénom ; il sert pour une recherche sur `RoomId`, ou sur `RoomId` puis `StartsAt`, mais pas sur `StartsAt` seul (règle du préfixe gauche), or la programmation cherche toutes salles confondues. Chaque index correspond donc à une requête réelle : `(RoomId, StartsAt)` pour vérifier qu'une salle n'a pas deux séances qui se chevauchent, `(StartsAt)` pour la programmation du jour. Avec quelques centaines de séances, la différence est imperceptible : l'intérêt est de montrer au jury une démarche (un index justifié par une requête, et prouvé par `EXPLAIN`), plutôt que des index posés au hasard._
 
 La requête filtre sur `StartsAt` seul. Dans `ScreeningConfiguration`, ajouter :
 

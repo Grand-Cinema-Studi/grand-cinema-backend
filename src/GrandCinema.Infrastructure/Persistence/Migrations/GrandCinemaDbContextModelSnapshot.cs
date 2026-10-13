@@ -163,6 +163,8 @@ namespace GrandCinema.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("MovieId");
 
+                    b.HasIndex("StartsAt");
+
                     b.HasIndex("RoomId", "StartsAt");
 
                     b.ToTable("Screenings");

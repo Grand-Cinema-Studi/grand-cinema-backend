@@ -17,5 +17,7 @@ public sealed class ScreeningConfiguration : IEntityTypeConfiguration<Screening>
         builder.HasOne(s => s.Room).WithMany().HasForeignKey(s => s.RoomId).OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(s => new { s.RoomId, s.StartsAt });
+
+        builder.HasIndex(s => s.StartsAt);
     }
 }
