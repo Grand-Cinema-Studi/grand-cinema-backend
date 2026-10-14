@@ -21,6 +21,7 @@ Correspondance avec le vocabulaire du Bloc 1 (MCD, user stories) :
 | Bloc 1 (français)                                            | Code (anglais)                                                    |
 | ------------------------------------------------------------ | ----------------------------------------------------------------- |
 | Programmation (films et horaires d'un jour)                  | Schedule                                                          |
+| Films à l'affiche (au moins une séance à venir)              | MoviesShowing                                                     |
 | Film                                                         | Movie                                                             |
 | Salle                                                        | Room                                                              |
 | Place                                                        | Seat                                                              |
@@ -35,6 +36,7 @@ Règles complémentaires :
 
 - noms des tests : `When_<situation>_Then_<résultat attendu>`, qui reprend le « Quand / Alors » des critères d'acceptation (exemple : `When_no_screening_exists_Then_the_movie_list_is_empty`) ;
 - couche Application rangée par fonctionnalité : `Features/<Feature>/Commands`, `Queries` et `DTOs` (voir l'étape 5) ;
+- couche Api rangée par la même fonctionnalité : `Endpoints/<Feature>/`, un fichier par cas d'usage, nommé d'après lui (exemple : `Endpoints/Screenings/ScheduleEndpoints.cs`, voir l'étape 7 ter) ;
 - couche Domain rangée par type d'élément : `Entities`, puis `Enums` quand le besoin apparaît.
 
 _Pourquoi : l'anglais est la langue de l'écosystème .NET (bibliothèques, documentation, messages d'erreur) ; une seule langue évite les noms hybrides comme `GetSeancesByDate`, et ce tableau garde le lien avec le MCD du Bloc 1, que le jury compare au code._
@@ -135,7 +137,7 @@ Cette étape se fait dans l'interface web de GitHub, juste après la publication
    - **Restrict deletions** (interdit de supprimer la branche) ;
    - **Block force pushes** (interdit de réécrire l'historique) ;
    - **Require a pull request before merging**, puis régler **Required approvals** sur **0**. En projet solo, on ne peut pas approuver sa propre Pull Request : une approbation requise bloquerait toute fusion.
-9. Ne pas cocher « Require status checks to pass » pour l'instant : aucun pipeline d'intégration continue n'existe encore. À ajouter plus tard, quand la CI sera en place.
+9. Ne pas cocher « Require status checks to pass » pour l'instant : aucun pipeline d'intégration continue n'existe encore. À ajouter quand la CI sera en place (étape 11e).
 10. Cliquer sur **Create** en bas de la page.
 
 Variante avec l'ancienne interface : Settings, puis **Branches**, puis **Add branch protection rule**. Saisir `main` comme motif, cocher **Require a pull request before merging** (approbations à 0) et valider ; recommencer pour `dev`.
@@ -355,6 +357,7 @@ src/GrandCinema.Application/
 │   ├── Cqrs/                 IQueryHandler, ICommandHandler
 │   └── Persistence/          interfaces des repositories (IScreeningReadRepository, ...)
 └── Features/
+    ├── Movies/               US 1.1 (films à l'affiche, étape 7 quater)
     ├── Screenings/           US 1.1, 2.2, 5.2
     │   ├── Commands/         (créé avec la première commande, US 5.2)
     │   ├── DTOs/             ScheduleDto, MovieScheduleDto, ScreeningDto
@@ -578,7 +581,7 @@ Pour chacun, dans la même classe de tests, répéter exactement : écrire le te
 - **Cycle 4 – sans date.** Test `When_no_date_is_chosen_Then_today_is_used` : requête avec `Date` nul ; l'horloge simulée est réglée sur le 18 juillet 2026 (fuseau local fixé avec `SetLocalTimeZone`) ; vérifier que le repository est appelé pour le 18 juillet. Code : `query.Date ?? DateOnly.FromDateTime(timeProvider.GetLocalNow().DateTime)`.
 - **Cycle 5 – ordre chronologique.** Test `When_a_movie_has_several_screenings_Then_they_are_sorted_by_time` : le repository renvoie une séance de 21 h avant une séance de 18 h 30 ; attendre 18 h 30 puis 21 h. Code : tri sur `StartsAt`.
 
-Point à retenir pour la production : « aujourd'hui » dépend du fuseau horaire. Un serveur en UTC verrait un autre jour que Paris en soirée. Prévoir plus tard un fuseau configuré pour le cinéma (à traiter avec le déploiement).
+Point à retenir pour la production : « aujourd'hui » dépend du fuseau horaire. Un serveur en UTC verrait un autre jour que Paris en soirée. Le fuseau du cinéma est fixé au déploiement par la variable d'environnement `TZ=Europe/Paris` (étapes 9 et 10).
 
 _À quoi la sous-étape a servi : à compléter le comportement de l'US 1.1 critère par critère (date choisie, aucune séance, date du jour par défaut, ordre chronologique), un cycle rouge, vert, refactor à la fois. Pourquoi : avancer par petits pas garde les tests verts entre deux cycles et limite le débogage ; à la fin, chaque critère d'acceptation est couvert par un test qui sert de non-régression._
 
@@ -676,7 +679,7 @@ git push -u origin feature/us-1-1-view-schedule
 
 La Pull Request n'est fusionnée que lorsque tous les tests sont verts. L'US 1.1 sera terminée après la suite décrite ci-dessous.
 
-**Suite de l'US 1.1, après l'étape 7 (base de données)** : implémentation de `IScreeningReadRepository` dans Infrastructure avec un test d'intégration sur PostgreSQL et l'index sur `StartsAt` (étape 7 bis), puis enregistrement des gestionnaires dans l'injection de dépendances, endpoint Minimal API de consultation de la programmation, documentation Swagger, puis fusion de la Pull Request.
+**Suite de l'US 1.1, après l'étape 7 (base de données)** : implémentation de `IScreeningReadRepository` dans Infrastructure avec un test d'intégration sur PostgreSQL et l'index sur `StartsAt` (étape 7 bis), puis enregistrement des gestionnaires dans l'injection de dépendances, endpoint Minimal API de consultation de la programmation et documentation Swagger (étape 7 ter), puis fusion de la Pull Request.
 
 _À quoi la sous-étape a servi : à vérifier que toute la suite de tests passe, à mesurer la couverture et à publier la branche pour la Pull Request, en notant ce qui reste à faire pour terminer l'US 1.1 (repository réel, endpoint, Swagger). Pourquoi : seul du code testé entre dans `dev` ; la couverture est un livrable du Dossier 3 ; découper l'US en deux temps permet de développer la logique métier avant que la base de données existe._
 
@@ -1279,7 +1282,757 @@ Ouvrir la Pull Request vers `dev`.
 
 _À quoi l'étape a servi : à brancher le cas d'usage de l'US 1.1 sur la vraie base, et à prouver contre PostgreSQL ce que le test unitaire ne pouvait pas prouver : seules les séances du jour demandé sont renvoyées, bornes comprises, avec leur film et leur salle. Pourquoi : un test d'intégration sur le même moteur qu'en production détecte les erreurs de traduction SQL et de mapping ; l'index est ajouté parce qu'une requête réelle le demande, et le plan d'exécution le prouve._
 
-Reste de l'US 1.1, à détailler ensuite : enregistrement des gestionnaires dans l'injection de dépendances, endpoint Minimal API `GET /api/schedule`, documentation Swagger.
+Reste de l'US 1.1 : l'endpoint `GET /api/schedule` et Swagger, à l'étape 7 ter.
+
+### Étape 7 ter – Fin de l'US 1.1 : endpoint et Swagger [ ]
+
+- **Quoi :** enregistrer le gestionnaire de l'US 1.1 dans l'injection de dépendances, exposer l'endpoint `GET /api/schedule`, le documenter avec Swagger, puis l'essayer avec des données de démonstration.
+- **Pourquoi :** jusqu'ici, la logique (gestionnaire) et l'accès aux données (repository) existent et sont testés, mais rien n'est appelable en HTTP. L'endpoint rend l'US 1.1 utilisable par le front Angular ; Swagger donne une documentation interactive de l'API, utile au front, au jury et aux essais manuels.
+
+```bash
+git switch dev
+git pull
+git switch -c feature/us-1-1-schedule-endpoint dev
+```
+
+#### Étape 7 ter a – Enregistrer les services de la couche Application
+
+La couche Application a besoin des abstractions d'injection de dépendances pour déclarer ses propres services :
+
+```bash
+dotnet add src/GrandCinema.Application package Microsoft.Extensions.DependencyInjection.Abstractions
+```
+
+Créer `src/GrandCinema.Application/DependencyInjection.cs`, sur le modèle de celui d'Infrastructure :
+
+```csharp
+using GrandCinema.Application.Abstractions.Cqrs;
+using GrandCinema.Application.Features.Screenings.DTOs;
+using GrandCinema.Application.Features.Screenings.Queries;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace GrandCinema.Application;
+
+public static class DependencyInjection
+{
+    public static IServiceCollection AddApplication(this IServiceCollection services)
+    {
+        services.AddSingleton(TimeProvider.System);
+        services.AddScoped<IQueryHandler<GetScheduleQuery, ScheduleDto>, GetScheduleHandler>();
+
+        return services;
+    }
+}
+```
+
+- `TimeProvider.System` est l'horloge réelle, remplacée par `FakeTimeProvider` dans les tests : c'est grâce à cette abstraction que le cycle 4 a pu fixer la date.
+- Chaque nouveau gestionnaire (US suivantes) s'ajoute ici, sur une ligne.
+
+#### Étape 7 ter b – L'endpoint
+
+Créer `src/GrandCinema.Api/Endpoints/Screenings/ScheduleEndpoints.cs` :
+
+```csharp
+using GrandCinema.Application.Abstractions.Cqrs;
+using GrandCinema.Application.Features.Screenings.DTOs;
+using GrandCinema.Application.Features.Screenings.Queries;
+using Microsoft.AspNetCore.Http.HttpResults;
+
+namespace GrandCinema.Api.Endpoints.Screenings;
+
+public static class ScheduleEndpoints
+{
+    public static IEndpointRouteBuilder MapScheduleEndpoints(this IEndpointRouteBuilder app)
+    {
+        app.MapGet("/api/schedule", GetSchedule)
+            .WithName("GetSchedule")
+            .WithTags("Schedule")
+            .WithSummary("Movies and screenings of a day")
+            .WithDescription("Returns the movies showing on the given date (today if omitted), with their screenings sorted by time.");
+
+        return app;
+    }
+
+    private static async Task<Ok<ScheduleDto>> GetSchedule(
+        DateOnly? date,
+        IQueryHandler<GetScheduleQuery, ScheduleDto> handler,
+        CancellationToken cancellationToken)
+    {
+        var schedule = await handler.Handle(new GetScheduleQuery(date), cancellationToken);
+        return TypedResults.Ok(schedule);
+    }
+}
+```
+
+- `DateOnly? date` est lu dans l'URL (`?date=2026-07-18`) ; absent, il vaut `null` et le gestionnaire prend la date du jour. Une date invalide (`?date=abc`) est refusée automatiquement avec un code 400.
+- Le gestionnaire est demandé par son interface : l'injection de dépendances fournit `GetScheduleHandler`, qui reçoit lui-même le repository et l'horloge.
+- `CancellationToken` : si le navigateur abandonne la requête, la requête SQL en cours est annulée.
+- `TypedResults.Ok` (plutôt que `Results.Ok`) donne un type de retour précis, `Ok<ScheduleDto>` : Swagger en déduit seul la forme de la réponse 200.
+- `WithName`, `WithTags`, `WithSummary` et `WithDescription` alimentent la documentation Swagger.
+- Rangement : un dossier par fonctionnalité, le même que dans Application (`Endpoints/Screenings/` répond à `Features/Screenings/`), et un fichier par cas d'usage, comme un gestionnaire par cas d'usage dans Application. Les places restantes d'une séance (US 2.2) iront dans `Endpoints/Screenings/RemainingSeatsEndpoints.cs`, une réservation dans `Endpoints/Reservations/`. Tout ce qui concerne une fonctionnalité porte le même nom dans les deux couches, et `Program.cs` reste court : une ligne `Map...Endpoints()` par cas d'usage.
+
+#### Étape 7 ter c – Swagger
+
+Depuis .NET 9, ASP.NET Core génère lui-même le document OpenAPI (la description de l'API au format JSON) ; l'interface web Swagger UI s'ajoute à part, pour l'afficher et essayer les endpoints.
+
+```bash
+dotnet add src/GrandCinema.Api package Microsoft.AspNetCore.OpenApi
+dotnet add src/GrandCinema.Api package Swashbuckle.AspNetCore.SwaggerUI
+```
+
+Remplacer le contenu de `src/GrandCinema.Api/Program.cs` (l'endpoint « Hello World » de départ disparaît) :
+
+```csharp
+using GrandCinema.Api.Endpoints.Screenings;
+using GrandCinema.Application;
+using GrandCinema.Infrastructure;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddApplication();
+builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddOpenApi();
+builder.Services.AddHealthChecks();
+
+var app = builder.Build();
+
+if (app.Configuration.GetValue<bool>("Swagger:Enabled"))
+{
+    app.MapOpenApi();
+    app.UseSwaggerUI(options => options.SwaggerEndpoint("/openapi/v1.json", "Grand Cinema API v1"));
+}
+
+app.MapHealthChecks("/health");
+app.MapScheduleEndpoints();
+
+app.Run();
+```
+
+Activer Swagger par configuration : désactivé par défaut, activé en développement.
+
+Dans `src/GrandCinema.Api/appsettings.json`, ajouter :
+
+```json
+"Swagger": {
+  "Enabled": false
+}
+```
+
+Dans `src/GrandCinema.Api/appsettings.Development.json`, ajouter :
+
+```json
+"Swagger": {
+  "Enabled": true
+}
+```
+
+Pour que `dotnet run` ouvre directement Swagger, ajouter `"launchUrl": "swagger",` dans les profils `http` et `https` de `src/GrandCinema.Api/Properties/launchSettings.json`.
+
+- `/openapi/v1.json` : le document OpenAPI ; `/swagger` : l'interface web.
+- `/health` répond `Healthy` tant que l'application tourne. Il servira au déploiement (étapes 10 et 11) pour vérifier qu'une nouvelle version a bien démarré.
+- En production, Swagger s'active le temps d'une démonstration avec la variable d'environnement `Swagger__Enabled=true` (le double tiret bas remplace le `:` des sections de configuration). Désactivé, il ne dévoile pas la liste des endpoints à n'importe quel visiteur.
+
+```bash
+dotnet build
+dotnet test
+```
+
+#### Étape 7 ter d – Données de démonstration et essai
+
+La base de développement est vide : la programmation renverrait une liste vide. Créer `docs/database/seed-dev.sql` :
+
+```sql
+-- Demo data for local development: one room, two movies, screenings today and tomorrow.
+-- Safe to run several times: rows already present are skipped.
+
+INSERT INTO "Rooms" ("Id", "Name", "Capacity")
+VALUES ('11111111-1111-1111-1111-111111111111', 'Salle 1', 170)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO "Movies" ("Id", "Title", "Synopsis", "DurationMinutes", "Genre", "ReleaseDate", "PosterUrl")
+VALUES
+    ('22222222-2222-2222-2222-222222222221', 'Blue Note', 'A documentary about the jazz label', 136, 'Documentary', '2023-10-01', 'https://example.com/blue-note.jpg'),
+    ('22222222-2222-2222-2222-222222222222', 'Metropolis', 'A futuristic city divided between workers and planners', 153, 'Science fiction', '1927-01-10', 'https://example.com/metropolis.jpg')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO "Screenings" ("Id", "MovieId", "RoomId", "StartsAt", "Price")
+VALUES
+    ('33333333-3333-3333-3333-333333333331', '22222222-2222-2222-2222-222222222221', '11111111-1111-1111-1111-111111111111', CURRENT_DATE + TIME '18:30', 9.00),
+    ('33333333-3333-3333-3333-333333333332', '22222222-2222-2222-2222-222222222221', '11111111-1111-1111-1111-111111111111', CURRENT_DATE + TIME '21:00', 9.00),
+    ('33333333-3333-3333-3333-333333333333', '22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', CURRENT_DATE + TIME '14:00', 7.50),
+    ('33333333-3333-3333-3333-333333333334', '22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', CURRENT_DATE + 1 + TIME '20:00', 9.00)
+ON CONFLICT DO NOTHING;
+```
+
+Le charger dans la base de développement (utilisateur et base : valeurs du `.env`) :
+
+```bash
+docker compose exec -T db psql -U <utilisateur> -d <base> < docs/database/seed-dev.sql
+```
+
+_Pourquoi un script SQL plutôt qu'un seed en C# : d'abord pour montrer au jury la maîtrise du SQL lui-même, et pas seulement d'EF Core : insertion de plusieurs lignes, identifiants explicites pour relier films, salles et séances, `ON CONFLICT DO NOTHING` pour pouvoir rejouer le script sans erreur, dates calculées par PostgreSQL (`CURRENT_DATE + TIME '18:30'`) pour que la programmation du jour soit toujours remplie. Ensuite parce que le même fichier se rejoue tel quel sur la base de production, pour une démonstration (étapes 10i et 10 G g). Alternatives écartées : `HasData` dans les configurations EF écrit les lignes dans la migration, donc les enverrait aussi en production, avec des dates figées le jour de la génération, et chaque retouche des données créerait une nouvelle migration (il est réservé aux données réelles et stables, comme les salles et les places du cinéma) ; `UseSeeding` (EF Core 9), activable en développement seulement, aurait convenu, mais aurait caché le SQL derrière du C#._
+
+Les séances de démonstration sont datées du jour où le script est chargé : le lendemain, elles sont passées. Pour les remettre à aujourd'hui et demain, créer `scripts/reset-demo-screenings.sh` :
+
+```bash
+#!/usr/bin/env bash
+# Resets the demo screenings of the development database: deletes them, then reloads docs/database/seed-dev.sql,
+# so that the demo schedule is always dated today and tomorrow.
+# Demo screenings are recognised by their identifier, which starts with 33333333- (see seed-dev.sql).
+# Usage, from anywhere in the repository: scripts/reset-demo-screenings.sh
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+env_value() {
+    grep -E "^$1=" .env | head -n 1 | cut -d '=' -f 2- | tr -d '\r'
+}
+
+DB_USER=$(env_value POSTGRES_USER)
+DB_NAME=$(env_value POSTGRES_DB)
+
+if [ -z "$(docker compose ps --quiet --status running db)" ]; then
+    echo "PostgreSQL is not running: start it with 'docker compose up -d'." >&2
+    exit 1
+fi
+
+{
+    cat <<'SQL'
+DELETE FROM "Reservations" WHERE "ScreeningId"::text LIKE '33333333-%';
+DELETE FROM "Screenings" WHERE "Id"::text LIKE '33333333-%';
+SQL
+    cat docs/database/seed-dev.sql
+} | docker compose exec -T db psql --quiet --single-transaction -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME"
+
+echo "Demo screenings reset for today ($(date +%F)) and tomorrow."
+```
+
+```bash
+chmod +x scripts/reset-demo-screenings.sh
+scripts/reset-demo-screenings.sh
+```
+
+Sous Windows (Git Bash), lancer `bash scripts/reset-demo-screenings.sh`.
+
+Ce que fait le script :
+
+- se place à la racine du dépôt, d'où qu'il soit lancé, et lit l'utilisateur et la base dans `.env` sans exécuter ce fichier (ni lire le mot de passe : la connexion se fait de l'intérieur du conteneur) ; `tr -d '\r'` tolère un `.env` enregistré avec des fins de ligne Windows ;
+- s'arrête avec un message clair si PostgreSQL n'est pas démarré ;
+- supprime **uniquement** les séances de démonstration, reconnues à leur identifiant qui commence par `33333333-` : les séances créées à la main pendant les essais sont conservées. Les réservations faites sur ces séances sont supprimées d'abord (leurs places réservées suivent, par la suppression en cascade), sinon la clé étrangère en `Restrict` bloquerait la suppression ;
+- recharge `seed-dev.sql` : les films et la salle existent déjà et sont ignorés (`ON CONFLICT DO NOTHING`), les séances sont recréées aux dates du jour ;
+- exécute le tout en **une seule transaction** (`--single-transaction`, avec `ON_ERROR_STOP` qui arrête à la première erreur) : en cas d'erreur, rien n'est supprimé.
+
+Lancer l'API :
+
+```bash
+dotnet run --project src/GrandCinema.Api
+```
+
+Essais :
+
+- `http://localhost:5073/swagger` : l'endpoint `GET /api/schedule` apparaît sous « Schedule », avec son résumé ; **Try it out**, puis **Execute** sans date : deux films du jour, Blue Note (18 h 30, 21 h) puis Metropolis (14 h) ;
+- même essai avec la date de demain : Metropolis à 20 h seulement ;
+- `?date=abc` : code 400 ;
+- `http://localhost:5073/health` : `Healthy`.
+
+Ou en ligne de commande :
+
+```bash
+curl http://localhost:5073/api/schedule
+curl "http://localhost:5073/api/schedule?date=2026-07-19"
+```
+
+Pas de test automatisé pour l'endpoint à ce stade : il ne contient aucune logique (il traduit la requête HTTP en `GetScheduleQuery`), et ce qu'il appelle est couvert par les tests unitaires et le test d'intégration. Des tests de l'API complète (`WebApplicationFactory`) sont prévus en phase 6.
+
+#### Étape 7 ter e – Enregistrer
+
+```bash
+git add .
+git commit -m "feat(us-1.1): add schedule endpoint and Swagger"
+git push -u origin feature/us-1-1-schedule-endpoint
+```
+
+Ouvrir la Pull Request vers `dev`. La programmation par jour est alors en place ; l'US 1.1 sera terminée avec la liste des films à l'affiche (étape 7 quater).
+
+- **Vérification :** Swagger affiche `GET /api/schedule` ; la programmation du jour s'affiche avec les données de démonstration ; `/health` répond `Healthy` ; tous les tests sont verts. PR : **\_\_**.
+
+_À quoi l'étape a servi : à rendre l'US 1.1 appelable en HTTP et documentée. Pourquoi : l'endpoint ne fait que traduire le HTTP en requête CQRS, toute la logique reste testée dans les couches internes ; l'enregistrement par `AddApplication` et `AddInfrastructure` garde `Program.cs` court, chaque couche déclarant ses propres services. Swagger est piloté par la configuration pour être visible en développement et activable en production le temps d'une démonstration, sans exposer en permanence la carte de l'API._
+
+### Étape 7 quater – Films à l'affiche : `GET /api/movies` [ ]
+
+- **Quoi :** exposer la liste des films actuellement programmés, c'est-à-dire ayant au moins une séance à venir, triés par titre, pour la page « Films à l'affiche » du front.
+- **Pourquoi :** `/api/schedule` répond à une autre question (les séances d'un jour donné) ; la liste des films proposés est une autre ressource, nommée d'après ce qu'elle renvoie : des films. Une fois la règle écrite dans le backlog, elle se développe en TDD comme l'US 1.1.
+
+**1. Écrire la règle dans le backlog.** Décision du Product Owner, ajoutée comme critère à l'issue de l'US 1.1 sur GitHub : « Je vois la liste des films actuellement programmés (au moins une séance à venir), triés par titre ». « À venir » : la séance commence maintenant ou plus tard, à l'heure du cinéma ; une séance commencée ne compte plus. Un film dont la dernière séance du jour est passée disparaît donc de la liste.
+
+**2. Liste des tests.**
+
+| Comportement | Test |
+|---|---|
+| Le repository est interrogé à partir de l'heure actuelle du cinéma | Cycle 1 : `When_movies_are_requested_Then_the_repository_is_queried_from_now` |
+| Les films programmés sont renvoyés | Cycle 2 : `When_a_movie_is_scheduled_Then_it_is_returned` |
+| Ils sont triés par titre | Cycle 3 : `When_several_movies_are_scheduled_Then_they_are_sorted_by_title` |
+| Seuls les films ayant une séance à venir sont retenus, chacun une seule fois | Test d'intégration : `When_movies_have_past_and_upcoming_screenings_Then_only_those_with_an_upcoming_screening_are_returned` |
+
+Comme pour l'US 1.1, le gestionnaire fixe l'heure et met en forme ; le filtre « au moins une séance à venir » s'exécute en SQL, et ne se prouve que contre PostgreSQL.
+
+```bash
+git switch dev
+git pull
+git switch -c feature/us-1-1-movies-showing dev
+mkdir -p src/GrandCinema.Application/Features/Movies/DTOs/Mappings src/GrandCinema.Application/Features/Movies/Queries
+mkdir -p tests/GrandCinema.Application.Tests/Features/Movies/Queries
+```
+
+Nouvelle fonctionnalité `Movies` dans Application (et plus loin `Endpoints/Movies` dans l'Api), selon la convention de rangement par fonctionnalité.
+
+#### Étape 7 quater a – Cycle 1 : le repository est interrogé à partir de maintenant
+
+**Rouge.** Créer `tests/GrandCinema.Application.Tests/Features/Movies/Queries/GetMoviesShowingHandlerTests.cs` :
+
+```csharp
+using GrandCinema.Application.Abstractions.Persistence;
+using GrandCinema.Application.Features.Movies.Queries;
+using GrandCinema.Domain.Entities;
+using Microsoft.Extensions.Time.Testing;
+using Moq;
+using Shouldly;
+
+namespace GrandCinema.Application.Tests.Features.Movies.Queries;
+
+public class GetMoviesShowingHandlerTests
+{
+    private readonly Mock<IMovieReadRepository> _movies = new();
+    private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 7, 18, 10, 0, 0, TimeSpan.Zero));
+
+    private static Movie NewMovie(string title) => new()
+    {
+        Id = Guid.NewGuid(), Title = title, Synopsis = "Synopsis", DurationMinutes = 100,
+        Genre = "Drama", ReleaseDate = new DateOnly(2025, 1, 1), PosterUrl = "https://example.com/p.jpg"
+    };
+
+    [Fact]
+    [Trait("US", "1.1")]
+    public async Task When_movies_are_requested_Then_the_repository_is_queried_from_now()
+    {
+        // Arrange
+        _time.SetLocalTimeZone(TimeZoneInfo.FindSystemTimeZoneById("Europe/Paris"));
+        _movies
+            .Setup(r => r.GetMoviesScheduledFromAsync(It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Movie>());
+        var handler = new GetMoviesShowingHandler(_movies.Object, _time);
+
+        // Act
+        await handler.Handle(new GetMoviesShowingQuery());
+
+        // Assert
+        _movies.Verify(r => r.GetMoviesScheduledFromAsync(new DateTime(2026, 7, 18, 12, 0, 0), It.IsAny<CancellationToken>()), Times.Once);
+    }
+}
+```
+
+L'horloge simulée indique 10 h UTC le 18 juillet, soit 12 h à Paris (heure d'été) : le repository doit être interrogé avec l'heure du cinéma, pas l'heure UTC.
+
+Squelettes minimaux pour compiler :
+
+`src/GrandCinema.Application/Abstractions/Persistence/IMovieReadRepository.cs` :
+
+```csharp
+using GrandCinema.Domain.Entities;
+
+namespace GrandCinema.Application.Abstractions.Persistence;
+
+public interface IMovieReadRepository
+{
+    Task<IReadOnlyList<Movie>> GetMoviesScheduledFromAsync(DateTime from, CancellationToken cancellationToken = default);
+}
+```
+
+`src/GrandCinema.Application/Features/Movies/DTOs/MovieDto.cs` :
+
+```csharp
+namespace GrandCinema.Application.Features.Movies.DTOs;
+
+public record class MovieDto
+{
+    public required Guid MovieId { get; init; }
+    public required string Title { get; init; }
+    public required string Synopsis { get; init; }
+    public required int DurationMinutes { get; init; }
+    public required string Genre { get; init; }
+    public required DateOnly ReleaseDate { get; init; }
+    public required string PosterUrl { get; init; }
+}
+```
+
+`src/GrandCinema.Application/Features/Movies/Queries/GetMoviesShowingQuery.cs` :
+
+```csharp
+namespace GrandCinema.Application.Features.Movies.Queries;
+
+public sealed record class GetMoviesShowingQuery;
+```
+
+`src/GrandCinema.Application/Features/Movies/Queries/GetMoviesShowingHandler.cs` :
+
+```csharp
+using GrandCinema.Application.Abstractions.Cqrs;
+using GrandCinema.Application.Abstractions.Persistence;
+using GrandCinema.Application.Features.Movies.DTOs;
+
+namespace GrandCinema.Application.Features.Movies.Queries;
+
+public sealed class GetMoviesShowingHandler : IQueryHandler<GetMoviesShowingQuery, IReadOnlyList<MovieDto>>
+{
+    private readonly IMovieReadRepository _movieReadRepository;
+    private readonly TimeProvider _timeProvider;
+
+    public GetMoviesShowingHandler(IMovieReadRepository movieReadRepository, TimeProvider timeProvider)
+    {
+        _movieReadRepository = movieReadRepository;
+        _timeProvider = timeProvider;
+    }
+
+    public Task<IReadOnlyList<MovieDto>> Handle(GetMoviesShowingQuery query, CancellationToken cancellationToken = default)
+        => throw new NotImplementedException();
+}
+```
+
+- `MovieDto` reprend les champs de `MovieScheduleDto`, sans les séances : un DTO par cas d'usage, taillé pour son écran. Partager le même DTO lierait deux fonctionnalités qui évolueront séparément.
+- `GetMoviesShowingQuery` n'a aucun paramètre : la requête est toujours « les films à l'affiche maintenant ».
+
+```bash
+dotnet test --filter "US=1.1"
+git add .
+git commit -m "test(us-1.1): red - movies showing queried from now"
+```
+
+Résultat attendu : le nouveau test échoue (`NotImplementedException`).
+
+**Vert.** Le minimum : lire l'heure du cinéma et interroger le repository.
+
+```csharp
+    public async Task<IReadOnlyList<MovieDto>> Handle(GetMoviesShowingQuery query, CancellationToken cancellationToken = default)
+    {
+        var now = _timeProvider.GetLocalNow().DateTime;
+        await _movieReadRepository.GetMoviesScheduledFromAsync(now, cancellationToken);
+
+        return [];
+    }
+```
+
+Renvoyer une liste vide est volontaire : aucun test n'exige encore de renvoyer les films, le cycle 2 s'en chargera.
+
+```bash
+dotnet test --filter "US=1.1"
+git add .
+git commit -m "feat(us-1.1): green - movies showing queried from now"
+```
+
+#### Étape 7 quater b – Cycle 2 : les films programmés sont renvoyés
+
+**Rouge.** Ajouter dans la classe de tests :
+
+```csharp
+    [Fact]
+    [Trait("US", "1.1")]
+    public async Task When_a_movie_is_scheduled_Then_it_is_returned()
+    {
+        // Arrange
+        var movie = NewMovie("Blue Note");
+        _movies
+            .Setup(r => r.GetMoviesScheduledFromAsync(It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Movie> { movie });
+        var handler = new GetMoviesShowingHandler(_movies.Object, _time);
+
+        // Act
+        var result = await handler.Handle(new GetMoviesShowingQuery());
+
+        // Assert
+        var dto = result.ShouldHaveSingleItem();
+        dto.MovieId.ShouldBe(movie.Id);
+        dto.Title.ShouldBe("Blue Note");
+    }
+```
+
+Résultat attendu : échec, la liste renvoyée est vide.
+
+```bash
+git add .
+git commit -m "test(us-1.1): red - scheduled movie returned"
+```
+
+**Vert.** Créer la conversion `src/GrandCinema.Application/Features/Movies/DTOs/Mappings/MovieMappings.cs`, sur le modèle de `ScreenMappings` :
+
+```csharp
+using GrandCinema.Domain.Entities;
+
+namespace GrandCinema.Application.Features.Movies.DTOs.Mappings;
+
+internal static class MovieMappings
+{
+    public static MovieDto ToMovieDto(this Movie movie) => new()
+    {
+        MovieId = movie.Id,
+        Title = movie.Title,
+        Synopsis = movie.Synopsis,
+        DurationMinutes = movie.DurationMinutes,
+        Genre = movie.Genre,
+        ReleaseDate = movie.ReleaseDate,
+        PosterUrl = movie.PosterUrl
+    };
+}
+```
+
+Et dans le gestionnaire (ajouter `using GrandCinema.Application.Features.Movies.DTOs.Mappings;`) :
+
+```csharp
+        var now = _timeProvider.GetLocalNow().DateTime;
+        var movies = await _movieReadRepository.GetMoviesScheduledFromAsync(now, cancellationToken);
+
+        return movies
+            .Select(m => m.ToMovieDto())
+            .ToList();
+```
+
+```bash
+dotnet test --filter "US=1.1"
+git add .
+git commit -m "feat(us-1.1): green - scheduled movie returned"
+```
+
+#### Étape 7 quater c – Cycle 3 : tri par titre
+
+**Rouge.** Ajouter :
+
+```csharp
+    [Fact]
+    [Trait("US", "1.1")]
+    public async Task When_several_movies_are_scheduled_Then_they_are_sorted_by_title()
+    {
+        // Arrange
+        _movies
+            .Setup(r => r.GetMoviesScheduledFromAsync(It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Movie> { NewMovie("Zorro"), NewMovie("Blue Note"), NewMovie("Metropolis") });
+        var handler = new GetMoviesShowingHandler(_movies.Object, _time);
+
+        // Act
+        var result = await handler.Handle(new GetMoviesShowingQuery());
+
+        // Assert
+        result.Select(m => m.Title).ShouldBe(new[] { "Blue Note", "Metropolis", "Zorro" });
+    }
+```
+
+Résultat attendu : échec, les films sont dans l'ordre renvoyé par le repository.
+
+```bash
+git add .
+git commit -m "test(us-1.1): red - movies showing sorted by title"
+```
+
+**Vert.** Ajouter le tri avant la conversion :
+
+```csharp
+        return movies
+            .OrderBy(m => m.Title)
+            .Select(m => m.ToMovieDto())
+            .ToList();
+```
+
+```bash
+dotnet test --filter "US=1.1"
+git add .
+git commit -m "feat(us-1.1): green - movies showing sorted by title"
+```
+
+Cette fois, chaque cycle a un vrai rouge : la phase verte n'a écrit que ce que le test en cours exigeait (comparer avec l'étape 5e bis).
+
+#### Étape 7 quater d – Le repository, contre PostgreSQL
+
+**Rouge.** Créer `tests/GrandCinema.Infrastructure.Tests/Persistence/Repositories/MovieReadRepositoryTests.cs` :
+
+```csharp
+using GrandCinema.Domain.Entities;
+using GrandCinema.Infrastructure.Persistence.Repositories;
+using Shouldly;
+
+namespace GrandCinema.Infrastructure.Tests.Persistence.Repositories;
+
+public class MovieReadRepositoryTests : IClassFixture<PostgreSqlFixture>
+{
+    private readonly PostgreSqlFixture _database;
+
+    public MovieReadRepositoryTests(PostgreSqlFixture database)
+    {
+        _database = database;
+    }
+
+    [Fact]
+    [Trait("US", "1.1")]
+    [Trait("Category", "Integration")]
+    public async Task When_movies_have_past_and_upcoming_screenings_Then_only_those_with_an_upcoming_screening_are_returned()
+    {
+        // Arrange
+        var now = new DateTime(2026, 7, 18, 12, 0, 0);
+        var room = new Room { Id = Guid.NewGuid(), Name = "Salle 1", Capacity = 170 };
+        Movie NewMovie(string title) => new()
+        {
+            Id = Guid.NewGuid(), Title = title, Synopsis = "Synopsis", DurationMinutes = 100,
+            Genre = "Drama", ReleaseDate = new DateOnly(2025, 1, 1), PosterUrl = "https://example.com/p.jpg"
+        };
+        var endedThisMorning = NewMovie("Ended this morning");
+        var startsNow = NewMovie("Starts now");
+        var twiceThisWeek = NewMovie("Twice this week");
+        var neverScheduled = NewMovie("Never scheduled");
+        Screening At(Movie movie, DateTime startsAt) => new() { Id = Guid.NewGuid(), Movie = movie, Room = room, StartsAt = startsAt, Price = 9m };
+
+        await using (var seed = _database.CreateDbContext())
+        {
+            seed.Movies.Add(neverScheduled);
+            seed.Screenings.AddRange(
+                At(endedThisMorning, new DateTime(2026, 7, 18, 11, 0, 0)),
+                At(startsNow, new DateTime(2026, 7, 18, 12, 0, 0)),
+                At(twiceThisWeek, new DateTime(2026, 7, 19, 18, 0, 0)),
+                At(twiceThisWeek, new DateTime(2026, 7, 20, 18, 0, 0)));
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = _database.CreateDbContext();
+        var repository = new MovieReadRepository(db);
+
+        // Act
+        var result = await repository.GetMoviesScheduledFromAsync(now);
+
+        // Assert
+        result.Select(m => m.Title).ShouldBe(new[] { "Starts now", "Twice this week" }, ignoreOrder: true);
+    }
+}
+```
+
+Chaque film du jeu de données vérifie un cas précis :
+
+- « Ended this morning » : séance le même jour, mais une heure plus tôt. Exclu : la comparaison porte sur l'heure, pas seulement sur le jour ;
+- « Starts now » : séance exactement à l'heure de la requête. Inclus : la borne est `>=` ;
+- « Twice this week » : deux séances à venir. Présent **une seule fois** ;
+- « Never scheduled » : aucune séance. Exclu.
+
+Squelette `src/GrandCinema.Infrastructure/Persistence/Repositories/MovieReadRepository.cs` :
+
+```csharp
+using GrandCinema.Application.Abstractions.Persistence;
+using GrandCinema.Domain.Entities;
+
+namespace GrandCinema.Infrastructure.Persistence.Repositories;
+
+public sealed class MovieReadRepository : IMovieReadRepository
+{
+    private readonly GrandCinemaDbContext _db;
+
+    public MovieReadRepository(GrandCinemaDbContext db)
+    {
+        _db = db;
+    }
+
+    public Task<IReadOnlyList<Movie>> GetMoviesScheduledFromAsync(DateTime from, CancellationToken cancellationToken = default)
+        => throw new NotImplementedException();
+}
+```
+
+```bash
+dotnet test --filter "US=1.1"
+git add .
+git commit -m "test(us-1.1): red - movies with an upcoming screening in PostgreSQL"
+```
+
+**Vert.** Ajouter `using Microsoft.EntityFrameworkCore;` et remplacer la méthode :
+
+```csharp
+    public async Task<IReadOnlyList<Movie>> GetMoviesScheduledFromAsync(DateTime from, CancellationToken cancellationToken = default)
+    {
+        return await _db.Movies
+            .AsNoTracking()
+            .Where(m => _db.Screenings.Any(s => s.MovieId == m.Id && s.StartsAt >= from))
+            .ToListAsync(cancellationToken);
+    }
+```
+
+- **`Any` devient `EXISTS` en SQL** : pour chaque film, PostgreSQL cherche une séance à venir et s'arrête à la première trouvée. Chaque film sort une seule fois, sans `Distinct` ; une jointure entre films et séances aurait renvoyé « Twice this week » deux fois.
+- La recherche s'appuie sur l'index existant `IX_Screenings_MovieId`.
+- L'heure `from` vient du gestionnaire, et non de `DateTime.Now` dans le repository : le fuseau du cinéma est géré à un seul endroit (`TimeProvider`, réglé par `TZ=Europe/Paris` en production), et le repository se teste avec une heure fixe.
+
+```bash
+dotnet test --filter "US=1.1"
+git add .
+git commit -m "feat(us-1.1): green - movies with an upcoming screening in PostgreSQL"
+```
+
+Résultat attendu : 9 tests unitaires et 2 tests d'intégration réussis. Pour vérifier que le test protège bien la règle, remplacer temporairement `>=` par `>`, puis `s.StartsAt >= from` par `s.StartsAt.Date >= from.Date` : le test d'intégration échoue chaque fois.
+
+#### Étape 7 quater e – Enregistrement et endpoint
+
+Dans `AddApplication` (avec les `using` de `Features.Movies.DTOs` et `Features.Movies.Queries`) :
+
+```csharp
+services.AddScoped<IQueryHandler<GetMoviesShowingQuery, IReadOnlyList<MovieDto>>, GetMoviesShowingHandler>();
+```
+
+Dans `AddInfrastructure` :
+
+```csharp
+services.AddScoped<IMovieReadRepository, MovieReadRepository>();
+```
+
+Créer `src/GrandCinema.Api/Endpoints/Movies/MoviesShowingEndpoints.cs` :
+
+```csharp
+using GrandCinema.Application.Abstractions.Cqrs;
+using GrandCinema.Application.Features.Movies.DTOs;
+using GrandCinema.Application.Features.Movies.Queries;
+using Microsoft.AspNetCore.Http.HttpResults;
+
+namespace GrandCinema.Api.Endpoints.Movies;
+
+public static class MoviesShowingEndpoints
+{
+    public static IEndpointRouteBuilder MapMoviesShowingEndpoints(this IEndpointRouteBuilder app)
+    {
+        app.MapGet("/api/movies", GetMoviesShowing)
+            .WithName("GetMoviesShowing")
+            .WithTags("Movies")
+            .WithSummary("Movies currently showing")
+            .WithDescription("Returns the movies with at least one upcoming screening, sorted by title.");
+
+        return app;
+    }
+
+    private static async Task<Ok<IReadOnlyList<MovieDto>>> GetMoviesShowing(
+        IQueryHandler<GetMoviesShowingQuery, IReadOnlyList<MovieDto>> handler,
+        CancellationToken cancellationToken)
+    {
+        var movies = await handler.Handle(new GetMoviesShowingQuery(), cancellationToken);
+        return TypedResults.Ok(movies);
+    }
+}
+```
+
+Dans `Program.cs` : ajouter `using GrandCinema.Api.Endpoints.Movies;`, puis `app.MapMoviesShowingEndpoints();` sous `app.MapScheduleEndpoints();`.
+
+**Essai** avec les données de démonstration (`scripts/reset-demo-screenings.sh` pour les remettre à aujourd'hui et demain) : dans Swagger, `GET /api/movies` sous « Movies » renvoie Blue Note et Metropolis. Après 21 h, Blue Note n'a plus de séance à venir et disparaît de la liste : c'est la règle attendue.
+
+```bash
+dotnet build
+dotnet test
+git add .
+git commit -m "feat(us-1.1): add movies showing endpoint"
+git push -u origin feature/us-1-1-movies-showing
+```
+
+Ouvrir la Pull Request vers `dev`.
+
+- **Vérification :** le critère figure dans l'issue de l'US 1.1 ; trois cycles rouge, vert dans l'historique ; 9 tests unitaires et 2 tests d'intégration verts ; `GET /api/movies` visible dans Swagger. PR : **\_\_**.
+
+_À quoi l'étape a servi : à ajouter la liste des films à l'affiche en suivant toute la démarche du projet : une règle d'abord écrite dans le backlog, puis un cycle TDD par comportement, un test d'intégration pour la partie SQL, et un endpoint sans logique. Pourquoi : la ressource porte le nom de ce qu'elle renvoie (`/api/movies`), la règle « au moins une séance à venir » est traduite en `EXISTS` par EF Core, ce qui renvoie chaque film une seule fois et laisse PostgreSQL s'arrêter à la première séance trouvée ; l'heure de référence vient du gestionnaire, pour que le fuseau du cinéma ne soit géré qu'à un seul endroit._
 
 ### Étape 8 – Livrer la phase [ ]
 
@@ -1307,6 +2060,1177 @@ dotnet test
 - **Vérification :** dev contient toute la phase 1, la compilation et les tests passent. PR : **\_\_**.
 
 _À quoi l'étape a servi : à intégrer proprement le travail de la phase dans dev et à prouver qu'il compile et se teste. Pourquoi : un incrément fini et relu, tracé par des Pull Requests, montre la gestion itérative attendue par la compétence C3.1 et sert de base saine pour les user stories suivantes._
+
+---
+
+## Phase 1 bis – Mise en ligne sur AWS
+
+Architecture cible :
+
+```text
+Internet ── HTTP 80 ──► EC2 (Amazon Linux 2023 + Docker)
+                         conteneur grandcinema-api (port 8080)
+                               │ PostgreSQL 5432, autorisé pour ce seul serveur
+                               ▼
+                         RDS PostgreSQL 16 (privée, sans accès Internet)
+
+ECR                    registre privé des images Docker de l'API
+SSM Parameter Store    chaîne de connexion chiffrée, lue par le serveur au déploiement
+SSM Session Manager    accès au serveur depuis la console AWS, sans SSH ni port ouvert
+GitHub Actions         tests, construction de l'image et déploiement à chaque fusion dans main
+```
+
+Choix : l'API tourne dans un conteneur Docker sur une machine EC2, la base dans RDS (service PostgreSQL géré : sauvegardes, mises à jour mineures). Docker garantit que l'image essayée en local est exactement celle qui tourne sur AWS ; EC2 laisse voir et comprendre chaque brique (serveur, réseau, droits), ce que masquerait un service plus intégré comme Elastic Beanstalk ou ECS. Le déploiement est d'abord fait à la main (étape 10) pour comprendre chaque geste, puis automatisé (étape 11).
+
+Région : **eu-west-3 (Paris)**, proche des utilisateurs et dans l'Union européenne (RGPD).
+
+**Deux chemins après l'étape 9, au choix :**
+
+| | Chemin A : étapes 10 et 11 | Chemin B, gratuit : étapes 10 G et 11 G (**retenu**) |
+|---|---|---|
+| Compte AWS | offre gratuite ou payant | **Free plan** : jamais facturé, crédits pendant 6 mois |
+| Base | RDS PostgreSQL (gérée par AWS) | PostgreSQL en conteneur sur le serveur |
+| Front | hors périmètre | conteneur sur le même serveur |
+| Images | ECR (500 Mo gratuits au plus) | GitHub Container Registry (gratuit, images publiques) |
+| Coût | payant dès la fin de l'offre gratuite | nul tant que dure le Free plan |
+| Sauvegardes | automatiques (RDS) | `pg_dump` planifié, à organiser |
+
+Le chemin B est retenu pour respecter un budget nul. Le chemin A reste décrit : c'est l'architecture cible du Bloc 1, et l'image Docker permet d'y passer sans changer le code.
+
+### Étape 9 – Image Docker de l'API [ ]
+
+- **Quoi :** décrire dans un `Dockerfile` la construction d'une image qui contient l'API publiée et l'outil de migration, puis l'essayer en local contre le PostgreSQL du docker compose.
+- **Pourquoi :** l'image est l'unité de déploiement : construite une fois, elle tourne à l'identique sur le poste, dans GitHub Actions et sur EC2. Le serveur n'a besoin que de Docker, ni SDK .NET ni code source.
+
+```bash
+git switch dev
+git pull
+git switch -c chore/docker-image dev
+```
+
+`Dockerfile` à la racine du dépôt :
+
+```dockerfile
+# Build stage: restores, publishes the API and builds the migration bundle
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+COPY global.json dotnet-tools.json ./
+COPY src/GrandCinema.Domain/GrandCinema.Domain.csproj src/GrandCinema.Domain/
+COPY src/GrandCinema.Application/GrandCinema.Application.csproj src/GrandCinema.Application/
+COPY src/GrandCinema.Infrastructure/GrandCinema.Infrastructure.csproj src/GrandCinema.Infrastructure/
+COPY src/GrandCinema.Api/GrandCinema.Api.csproj src/GrandCinema.Api/
+RUN dotnet tool restore && dotnet restore src/GrandCinema.Api/GrandCinema.Api.csproj
+
+COPY src/ src/
+RUN dotnet publish src/GrandCinema.Api/GrandCinema.Api.csproj -c Release -o /app/publish --no-restore
+
+# The design-time tools build the host, which requires a connection string: a placeholder is enough to build the bundle
+RUN ConnectionStrings__Default="Host=placeholder" dotnet ef migrations bundle \
+    --project src/GrandCinema.Infrastructure --startup-project src/GrandCinema.Api \
+    --configuration Release --output /app/publish/efbundle
+
+# Runtime stage: only the ASP.NET Core runtime and the published files
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+WORKDIR /app
+COPY --from=build /app/publish .
+USER $APP_UID
+EXPOSE 8080
+ENTRYPOINT ["dotnet", "GrandCinema.Api.dll"]
+```
+
+`.dockerignore` à la racine (ce qui n'est pas envoyé à Docker pendant la construction) :
+
+```text
+**/bin/
+**/obj/
+**/TestResults/
+.git/
+.github/
+.vscode/
+.env
+docs/
+tests/
+Dockerfile
+docker-compose.yml
+```
+
+Points clés :
+
+- **Deux étapes (multi-stage).** L'étape `build` utilise le SDK complet ; l'image finale ne garde que le runtime ASP.NET Core et les fichiers publiés : plus légère, et sans compilateur ni code source à exploiter en cas d'intrusion.
+- **Les `.csproj` copiés avant le code.** Docker met chaque instruction en cache : tant que les projets et leurs paquets ne changent pas, la restauration n'est pas refaite, et une modification du code ne relance que la compilation.
+- **Le migration bundle (`efbundle`).** `dotnet ef migrations bundle` produit un exécutable autonome qui applique les migrations à une base, sans SDK ni `dotnet ef`. Il est rangé dans l'image : la version de l'API et celle du schéma voyagent ensemble. Les outils EF construisent l'hôte de l'API, et `AddInfrastructure` refuse de démarrer sans chaîne de connexion : une valeur factice suffit pour construire le bundle, qui n'a pas besoin de la base à ce moment-là.
+- **`USER $APP_UID`.** L'image officielle fournit un utilisateur sans droits d'administration : si l'application était compromise, l'attaquant ne serait pas `root` dans le conteneur.
+- **Port 8080.** Port d'écoute par défaut des images ASP.NET Core depuis .NET 8 (un utilisateur non `root` ne peut pas écouter sur le port 80).
+- **`.dockerignore`.** Exclut notamment `.env` : aucun secret ne doit entrer dans une image.
+
+Essai en local, contre le PostgreSQL du docker compose (qui doit tourner) :
+
+```bash
+docker build -t grandcinema-api:local .
+docker network ls
+```
+
+Repérer le réseau créé par docker compose (nom du dossier suivi de `_default`, par exemple `grand-cinema-backend_default`). Dans ce réseau, la base s'appelle `db` (nom du service), pas `localhost`.
+
+Appliquer les migrations avec le bundle de l'image (sans effet si la base est déjà à jour) :
+
+```bash
+docker run --rm --network <reseau> -e ConnectionStrings__Default="Host=db;Port=5432;Database=<base>;Username=<utilisateur>;Password=<mot-de-passe>" --entrypoint /app/efbundle grandcinema-api:local
+```
+
+Résultat attendu : `No migrations were applied. The database is already up to date.`
+
+Lancer l'API en conteneur :
+
+```bash
+docker run --rm -p 8080:8080 --network <reseau> -e ConnectionStrings__Default="Host=db;Port=5432;Database=<base>;Username=<utilisateur>;Password=<mot-de-passe>" -e TZ=Europe/Paris -e Swagger__Enabled=true grandcinema-api:local
+```
+
+Essais : `http://localhost:8080/health`, `http://localhost:8080/api/schedule`, `http://localhost:8080/swagger`. Relancer sans `-e Swagger__Enabled=true` : `/swagger` répond 404. Arrêter avec Ctrl+C.
+
+La chaîne de connexion tapée en clair reste dans l'historique du terminal : acceptable pour la base locale, jamais pour celle de production (étape 10).
+
+- **`TZ=Europe/Paris` règle le point laissé ouvert à l'étape 5e.** Le gestionnaire prend « aujourd'hui » dans le fuseau local du système ; un serveur est presque toujours en UTC, et verrait le lendemain dès 22 h ou 23 h à Paris. La variable `TZ` fixe le fuseau du conteneur sur celui du cinéma, quel que soit le serveur.
+
+```bash
+git add Dockerfile .dockerignore
+git commit -m "chore(deploy): add API Docker image"
+git push -u origin chore/docker-image
+```
+
+Ouvrir la Pull Request vers `dev`.
+
+- **Vérification :** l'image se construit ; le bundle s'exécute ; l'API en conteneur répond sur `/health` et `/api/schedule` ; Swagger n'est visible qu'avec `Swagger__Enabled=true`. PR : **\_\_**.
+
+_À quoi l'étape a servi : à empaqueter l'API et ses migrations dans une image unique, reproductible et sans secret. Pourquoi : ce qui a été essayé en local est exactement ce qui sera déployé ; le serveur n'a plus besoin que de Docker ; les migrations ne s'appliquent pas au démarrage de l'API (voir l'étape 7d) mais par un geste explicite, avant de lancer la nouvelle version._
+
+### Étape 10 – Premier déploiement sur AWS, à la main [ ]
+
+- **Quoi :** créer les ressources AWS (registre d'images, réseau, base RDS, secret, serveur EC2), puis déployer une première version de l'image à la main.
+- **Pourquoi :** comprendre chaque brique avant de l'automatiser. L'étape 11 rejouera exactement les mêmes gestes depuis GitHub Actions.
+
+```bash
+git switch dev
+git pull
+git switch -c chore/aws-deployment dev
+```
+
+#### Étape 10a – Préparer le compte AWS
+
+1. **Ne pas travailler avec le compte racine.** Activer l'authentification à deux facteurs (MFA) sur le compte racine, puis créer un accès personnel d'administration (IAM Identity Center, ou à défaut un utilisateur IAM avec MFA) et l'utiliser pour la suite.
+2. **Créer une alerte de coût** avant toute ressource : Billing and Cost Management → Budgets → Create budget → modèle **Zero spend budget** (alerte au premier centime dépensé) ou **Monthly cost budget** avec un petit montant, et une adresse e-mail. Les offres gratuites dépendent de la date de création du compte : vérifier dans la console celles dont le compte bénéficie (types d'instance EC2 et RDS éligibles, crédits).
+3. **Choisir la région eu-west-3 (Paris)** en haut à droite de la console, pour toutes les ressources.
+4. **Installer l'AWS CLI v2** sur le poste ([guide d'installation officiel](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)), puis la connecter au compte :
+
+```bash
+aws --version
+aws configure sso            # avec IAM Identity Center ; sinon : aws configure
+aws sts get-caller-identity  # affiche le numéro de compte : la connexion fonctionne
+```
+
+#### Étape 10b – Registre d'images (ECR)
+
+```bash
+aws ecr create-repository --repository-name grandcinema-api --region eu-west-3
+aws ecr put-lifecycle-policy --repository-name grandcinema-api --region eu-west-3 --lifecycle-policy-text '{"rules":[{"rulePriority":1,"description":"Keep the last 10 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":10},"action":{"type":"expire"}}]}'
+```
+
+L'adresse du registre est `<compte>.dkr.ecr.eu-west-3.amazonaws.com/grandcinema-api` (`<compte>` : numéro à douze chiffres affiché par `aws sts get-caller-identity`). La règle de cycle de vie ne garde que les dix dernières images : le stockage reste gratuit ou presque, et les versions récentes restent disponibles pour revenir en arrière.
+
+#### Étape 10c – Groupes de sécurité (pare-feu)
+
+Console EC2 → Security Groups → Create security group, dans le VPC par défaut :
+
+| Nom | Règle entrante | Rôle |
+|---|---|---|
+| `grandcinema-api-sg` | HTTP, port 80, source `0.0.0.0/0` | l'API est publique |
+| `grandcinema-db-sg` | PostgreSQL, port 5432, source `grandcinema-api-sg` | seule l'API peut joindre la base |
+
+Aucune règle SSH (port 22) : l'accès au serveur passe par Session Manager (étape 10f), sans port ouvert. Pour `grandcinema-db-sg`, la source est le **groupe de sécurité** de l'API, pas une adresse IP : la règle reste valable même si le serveur change d'adresse.
+
+#### Étape 10d – Base de données (RDS PostgreSQL)
+
+Console RDS → Create database :
+
+- **Standard create**, moteur **PostgreSQL**, version **16** (la même que le docker compose et que les tests d'intégration) ;
+- modèle **Free tier** ou **Dev/Test**, déploiement **Single-AZ** ;
+- identifiant : `grandcinema-db` ; nom d'utilisateur principal : par exemple `grandcinema_admin` ; mot de passe : **Self managed**, long et généré (le noter dans un gestionnaire de mots de passe) ;
+- classe d'instance : la plus petite éligible à l'offre gratuite du compte (par exemple `db.t4g.micro`) ; stockage gp3, 20 Gio, **sans** mise à l'échelle automatique ;
+- connectivité : **Don't connect to an EC2 compute resource**, VPC par défaut, **Public access : No**, groupe de sécurité `grandcinema-db-sg` (retirer `default`) ;
+- **Additional configuration → Initial database name : `grandcinema`** (sans ce champ, aucune base applicative n'est créée) ;
+- sauvegardes automatiques : 1 jour ; Performance Insights et Enhanced monitoring désactivés (coûts).
+
+Une fois la base disponible (quelques minutes), relever son **Endpoint** (onglet Connectivity & security), de la forme `grandcinema-db.xxxxxxxx.eu-west-3.rds.amazonaws.com`.
+
+Chaîne de connexion de production :
+
+```text
+Host=<endpoint>;Port=5432;Database=grandcinema;Username=grandcinema_admin;Password=<mot-de-passe>;SSL Mode=Require
+```
+
+`SSL Mode=Require` : RDS PostgreSQL impose le chiffrement des connexions ; les échanges entre l'API et la base sont chiffrés.
+
+#### Étape 10e – Secrets dans Parameter Store
+
+Console Systems Manager → Parameter Store → Create parameter :
+
+| Nom | Type | Valeur |
+|---|---|---|
+| `/grandcinema/prod/connection-string` | **SecureString** | la chaîne de connexion de production |
+| `/grandcinema/prod/swagger-enabled` | String | `false` |
+
+Passer par la console évite que le mot de passe reste dans l'historique du terminal. Le type SecureString chiffre la valeur (clé KMS gérée par AWS) ; le niveau Standard de Parameter Store est gratuit. Le second paramètre pilote Swagger en production sans reconstruire l'image.
+
+#### Étape 10f – Serveur EC2
+
+**Rôle IAM du serveur.** Console IAM → Roles → Create role → AWS service, cas d'usage **EC2** :
+
+- politiques gérées : `AmazonSSMManagedInstanceCore` (Session Manager et commandes à distance) et `AmazonEC2ContainerRegistryReadOnly` (télécharger les images) ;
+- nom : `grandcinema-ec2-role` ;
+- après création, ajouter une politique en ligne (Add permissions → Create inline policy → JSON), nommée `read-grandcinema-parameters` :
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "ssm:GetParameter",
+      "Resource": "arn:aws:ssm:eu-west-3:<compte>:parameter/grandcinema/prod/*"
+    }
+  ]
+}
+```
+
+Le serveur ne reçoit que les droits dont il a besoin (principe du moindre privilège), et aucune clé d'accès n'est stockée dessus : AWS lui fournit des identifiants temporaires par ce rôle.
+
+**Instance.** Console EC2 → Launch instance :
+
+- nom : `grandcinema-api` ; image : **Amazon Linux 2023** (architecture x86_64) ; type : `t3.micro` (ou le type éligible à l'offre gratuite du compte) ;
+- paire de clés : **Proceed without a key pair** (pas de SSH) ;
+- réseau : VPC par défaut, **Auto-assign public IP : Enable**, groupe de sécurité `grandcinema-api-sg` ;
+- stockage : 16 Gio gp3 (les images Docker occupent de la place) ;
+- Advanced details → **IAM instance profile : `grandcinema-ec2-role`** ; **User data** (script exécuté au premier démarrage) :
+
+```bash
+#!/bin/bash
+dnf install -y docker
+systemctl enable --now docker
+```
+
+**Adresse IP fixe.** EC2 → Elastic IPs → Allocate Elastic IP address, puis Actions → Associate → instance `grandcinema-api`. Sans elle, l'adresse publique change à chaque arrêt et redémarrage du serveur. Toute adresse IPv4 publique est facturée par AWS (quelques euros par mois) : à prévoir dans le budget, et à libérer à la fin du projet.
+
+**Connexion au serveur.** EC2 → instance → Connect → **Session Manager** → Connect. Un terminal s'ouvre dans le navigateur, sans clé ni port 22. Vérifier :
+
+```bash
+docker --version
+aws --version
+```
+
+Si Session Manager n'est pas proposé, attendre quelques minutes après le démarrage, et vérifier que le rôle `grandcinema-ec2-role` est bien attaché à l'instance.
+
+#### Étape 10g – Script de déploiement
+
+Créer `deploy/run-api.sh` dans le dépôt :
+
+```bash
+#!/usr/bin/env bash
+# Deploys a version of the API on the EC2 instance: applies the migrations, then replaces the running container.
+# Usage: run-api.sh <account>.dkr.ecr.eu-west-3.amazonaws.com/grandcinema-api:<tag>
+set -euo pipefail
+
+IMAGE="$1"
+REGION="eu-west-3"
+REGISTRY="${IMAGE%%/*}"
+ENV_FILE="/opt/grandcinema/api.env"
+
+aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$REGISTRY"
+docker pull "$IMAGE"
+
+CONNECTION_STRING=$(aws ssm get-parameter --region "$REGION" --name /grandcinema/prod/connection-string --with-decryption --query Parameter.Value --output text)
+SWAGGER_ENABLED=$(aws ssm get-parameter --region "$REGION" --name /grandcinema/prod/swagger-enabled --query Parameter.Value --output text)
+
+umask 077
+cat > "$ENV_FILE" <<EOF
+ConnectionStrings__Default=$CONNECTION_STRING
+Swagger__Enabled=$SWAGGER_ENABLED
+TZ=Europe/Paris
+EOF
+
+docker run --rm --env-file "$ENV_FILE" --entrypoint /app/efbundle "$IMAGE"
+
+docker rm -f grandcinema-api 2>/dev/null || true
+docker run -d --name grandcinema-api --restart unless-stopped -p 80:8080 --env-file "$ENV_FILE" "$IMAGE"
+docker image prune -af
+
+for attempt in $(seq 1 30); do
+    if curl -fs http://localhost/health > /dev/null; then
+        echo "Deployed $IMAGE"
+        exit 0
+    fi
+    sleep 2
+done
+
+echo "The API did not become healthy" >&2
+docker logs --tail 50 grandcinema-api >&2
+exit 1
+```
+
+```bash
+chmod +x deploy/run-api.sh
+```
+
+Ce que fait le script, dans l'ordre :
+
+1. se connecte au registre ECR et télécharge l'image demandée ;
+2. lit la chaîne de connexion et le réglage de Swagger dans Parameter Store, et les écrit dans un fichier lisible par `root` seul (`umask 077`) : le secret n'apparaît ni dans le dépôt, ni dans l'image, ni dans la liste des processus ;
+3. applique les migrations avec le bundle de la **nouvelle** image, avant de démarrer la nouvelle version ; si elles échouent, le script s'arrête (`set -e`) et l'ancienne version continue de tourner ;
+4. remplace le conteneur (quelques secondes d'interruption, acceptables ici) ; `--restart unless-stopped` le relance après un redémarrage du serveur ou un plantage ;
+5. supprime les anciennes images pour ne pas remplir le disque ;
+6. attend que `/health` réponde, sinon affiche les derniers journaux et échoue.
+
+Installer le script sur le serveur (terminal Session Manager) : créer le dossier, puis coller le contenu du fichier entre les deux lignes `SCRIPT` :
+
+```bash
+sudo mkdir -p /opt/grandcinema
+sudo tee /opt/grandcinema/run-api.sh > /dev/null <<'SCRIPT'
+<contenu de deploy/run-api.sh>
+SCRIPT
+sudo chmod 700 /opt/grandcinema/run-api.sh
+```
+
+Le script versionné dans `deploy/` est la référence : après toute modification, le recopier sur le serveur de la même façon.
+
+#### Étape 10h – Construire, pousser et déployer
+
+Sur le poste, depuis la racine du dépôt :
+
+```bash
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+REGISTRY=$ACCOUNT_ID.dkr.ecr.eu-west-3.amazonaws.com
+IMAGE=$REGISTRY/grandcinema-api:$(git rev-parse --short HEAD)
+
+aws ecr get-login-password --region eu-west-3 | docker login --username AWS --password-stdin $REGISTRY
+docker build -t $IMAGE .
+docker push $IMAGE
+echo $IMAGE
+```
+
+Sur un Mac à puce Apple, construire pour l'architecture du serveur : `docker build --platform linux/amd64 -t $IMAGE .`
+
+L'image est étiquetée avec le commit Git : on sait toujours quelle version du code tourne en production.
+
+Dans le terminal Session Manager, avec l'adresse affichée par `echo $IMAGE` :
+
+```bash
+sudo /opt/grandcinema/run-api.sh <image>
+```
+
+Résultat attendu : les migrations sont appliquées sur la base RDS vide, puis `Deployed <image>`.
+
+#### Étape 10i – Vérifier
+
+Depuis le poste, avec l'Elastic IP :
+
+```bash
+curl http://<elastic-ip>/health
+curl http://<elastic-ip>/api/schedule
+```
+
+Résultats attendus : `Healthy`, puis `{"date":"<date du jour à Paris>","movies":[]}`. La liste est vide : la base de production ne contient encore aucune séance.
+
+**Démonstration de Swagger au jury.** Passer le paramètre `/grandcinema/prod/swagger-enabled` à `true` dans Parameter Store, relancer `sudo /opt/grandcinema/run-api.sh <image>` (même image), ouvrir `http://<elastic-ip>/swagger`. Après la démonstration, remettre `false` et relancer.
+
+**Données de démonstration (facultatif).** Depuis le terminal Session Manager, charger le script de l'étape 7 ter dans la base RDS avec un client `psql` lancé en conteneur (le dépôt étant public, le script est lu directement sur GitHub) :
+
+```bash
+read -rs -p "Mot de passe RDS : " PGPASSWORD; echo
+curl -fsSL https://raw.githubusercontent.com/Grand-Cinema-Studi/grand-cinema-backend/main/docs/database/seed-dev.sql \
+  | sudo docker run --rm -i -e PGPASSWORD="$PGPASSWORD" postgres:16 psql -h <endpoint> -U grandcinema_admin -d grandcinema
+```
+
+**Revenir à une version précédente.** Relancer le script avec l'étiquette d'une image antérieure (liste dans la console ECR) : `sudo /opt/grandcinema/run-api.sh <registre>/grandcinema-api:<ancien-commit>`. Attention : les migrations ne sont jamais annulées automatiquement ; une migration qui supprime une colonne doit être pensée pour rester compatible avec la version précédente.
+
+#### Étape 10j – Coûts et limites
+
+- **Coûts.** Ressources facturées hors offre gratuite : l'instance EC2, l'instance et le stockage RDS, l'adresse IPv4 publique. Hors périodes de travail, arrêter l'instance EC2 et la base RDS (une base RDS arrêtée redémarre seule au bout de sept jours). À la fin du projet : supprimer l'instance, la base, l'Elastic IP, le registre ECR et les paramètres.
+- **HTTP seulement.** L'API répond en HTTP, sans chiffrement entre le navigateur et le serveur : suffisant pour une démonstration, insuffisant pour une vraie mise en production avec authentification. Évolution : un nom de domaine et un certificat (équilibreur de charge AWS avec certificat ACM, ou proxy Caddy avec Let's Encrypt sur le serveur), à prévoir avant l'authentification (US 2.1) et avant de brancher le front Angular.
+- **Un seul serveur.** Pas de haute disponibilité : si l'instance tombe, l'API est indisponible le temps de la relancer. Cohérent avec le volume d'un cinéma indépendant ; l'image Docker permettrait de passer plus tard sur plusieurs instances ou sur ECS sans changer le code.
+
+```bash
+git add deploy/run-api.sh
+git commit -m "chore(deploy): add EC2 deployment script"
+git push -u origin chore/aws-deployment
+```
+
+Ouvrir la Pull Request vers `dev`.
+
+- **Vérification :** `/health` répond `Healthy` sur l'Elastic IP ; `/api/schedule` renvoie la date du jour à Paris ; la base RDS n'est pas joignable depuis Internet ; aucun secret dans le dépôt ni dans l'image. PR : **\_\_**.
+
+_À quoi l'étape a servi : à mettre l'API en ligne sur AWS en comprenant chaque brique : registre d'images, pare-feu, base gérée, secret chiffré, serveur et script de déploiement. Pourquoi : la base n'est accessible que par l'API, le serveur n'a aucun port d'administration ouvert ni clé stockée, et le secret ne quitte Parameter Store qu'au moment du déploiement. Chaque version déployée est identifiée par son commit, ce qui permet de revenir en arrière en une commande._
+
+### Étape 11 – Intégration et déploiement continus (GitHub Actions) [ ]
+
+- **Quoi :** un workflow d'intégration continue (CI) qui compile et teste chaque Pull Request, et un workflow de déploiement continu (CD) qui, à chaque fusion dans `main`, teste, construit l'image, la pousse dans ECR et la déploie sur EC2 avec le script de l'étape 10.
+- **Pourquoi :** plus aucun déploiement à la main, donc plus d'oubli ni de version construite sur un poste mal configuré ; une Pull Request dont les tests échouent ne peut plus être fusionnée ; chaque déploiement est tracé dans l'onglet Actions de GitHub.
+
+```bash
+git switch dev
+git pull
+git switch -c chore/ci-cd dev
+mkdir -p .github/workflows
+```
+
+#### Étape 11a – Intégration continue
+
+`.github/workflows/ci.yml` :
+
+```yaml
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - run: dotnet restore
+      - run: dotnet build --no-restore --configuration Release
+      - run: dotnet test --no-build --configuration Release
+```
+
+- `global-json-file` : GitHub installe la version du SDK figée dans `global.json` à l'étape 1, la même que sur les postes.
+- Les machines `ubuntu-latest` de GitHub disposent de Docker : le test d'intégration Testcontainers y tourne comme en local.
+- Si GitHub signale une version plus récente d'une action (`@v4`, ...), mettre à jour le numéro.
+
+#### Étape 11b – Accès de GitHub à AWS sans clé (OIDC)
+
+GitHub Actions s'authentifie auprès d'AWS par OpenID Connect : à chaque exécution, GitHub présente un jeton signé qui prouve « je suis le workflow de tel dépôt, sur telle branche », et AWS lui donne des identifiants temporaires valables le temps du workflow. Aucune clé d'accès AWS n'est stockée dans GitHub, donc aucune clé ne peut fuiter.
+
+1. Console IAM → Identity providers → Add provider → **OpenID Connect** ; Provider URL : `https://token.actions.githubusercontent.com` ; Audience : `sts.amazonaws.com`.
+2. IAM → Roles → Create role → **Custom trust policy**, nom `grandcinema-github-deploy`, avec cette politique de confiance :
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::<compte>:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+          "token.actions.githubusercontent.com:sub": "repo:Grand-Cinema-Studi/grand-cinema-backend:ref:refs/heads/main"
+        }
+      }
+    }
+  ]
+}
+```
+
+La condition `sub` limite le rôle aux workflows **de ce dépôt** exécutés **sur la branche `main`** : une Pull Request ou une autre branche ne peut pas déployer.
+
+3. Ajouter au rôle une politique en ligne `deploy-grandcinema` :
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:PutImage"
+      ],
+      "Resource": "arn:aws:ecr:eu-west-3:<compte>:repository/grandcinema-api"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "ssm:SendCommand",
+      "Resource": [
+        "arn:aws:ec2:eu-west-3:<compte>:instance/<id-instance>",
+        "arn:aws:ssm:eu-west-3::document/AWS-RunShellScript"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": "ssm:GetCommandInvocation",
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+Le workflow peut seulement pousser des images dans ce registre et lancer une commande sur ce serveur : rien d'autre dans le compte.
+
+#### Étape 11c – Variables du dépôt
+
+GitHub → Settings → Secrets and variables → Actions → onglet **Variables** → New repository variable :
+
+| Nom | Valeur |
+|---|---|
+| `AWS_REGION` | `eu-west-3` |
+| `AWS_ROLE_ARN` | ARN du rôle `grandcinema-github-deploy` (`arn:aws:iam::<compte>:role/grandcinema-github-deploy`) |
+| `ECR_REPOSITORY` | `grandcinema-api` |
+| `EC2_INSTANCE_ID` | identifiant de l'instance (`i-...`) |
+| `API_URL` | `http://<elastic-ip>` |
+
+Ce sont des **variables**, pas des secrets : aucune n'est confidentielle, et le seul vrai secret (la chaîne de connexion) reste dans Parameter Store.
+
+#### Étape 11d – Déploiement continu
+
+`.github/workflows/deploy.yml` :
+
+```yaml
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - run: dotnet test --configuration Release
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push the image
+        run: |
+          IMAGE="${{ steps.ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }}"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      - name: Deploy on EC2
+        run: |
+          INSTANCE_ID="${{ vars.EC2_INSTANCE_ID }}"
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "Deploy ${{ github.sha }}" \
+            --parameters "{\"commands\":[\"/opt/grandcinema/run-api.sh $IMAGE\"]}" \
+            --query Command.CommandId --output text)
+          if ! aws ssm wait command-executed --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID"; then
+            aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query "[Status, StandardErrorContent]" --output text
+            exit 1
+          fi
+          aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query StandardOutputContent --output text
+
+      - name: Check the API
+        run: curl --fail --silent --show-error --retry 5 --retry-delay 5 "${{ vars.API_URL }}/health"
+```
+
+Ce que fait le workflow :
+
+- **déclenchement** : à chaque push sur `main`, c'est-à-dire à chaque fusion de la Pull Request `dev` → `main` ; `workflow_dispatch` ajoute un bouton « Run workflow » pour relancer un déploiement à la main ;
+- **`permissions: id-token: write`** : autorise le workflow à demander le jeton OIDC de l'étape 11b ;
+- **`concurrency`** : deux déploiements ne se chevauchent jamais, le second attend la fin du premier ;
+- **`test` puis `deploy`** (`needs: test`) : rien n'est déployé si un test échoue ;
+- **image étiquetée avec `github.sha`** : le commit exact, comme au déploiement manuel ;
+- **Run Command (`ssm send-command`)** : AWS exécute le script de l'étape 10g sur le serveur, en `root`, sans SSH ; le workflow attend la fin et affiche la sortie du script, ou son erreur ;
+- **dernière vérification** : `/health` doit répondre depuis Internet.
+
+Si le déploiement dépasse le temps d'attente de `aws ssm wait` (environ 100 secondes, par exemple au premier téléchargement d'une image), le script continue sur le serveur : consulter le résultat dans la console Systems Manager → Run Command.
+
+#### Étape 11e – Enregistrer et activer
+
+```bash
+git add .github/workflows
+git commit -m "chore(ci): add CI and deployment workflows"
+git push -u origin chore/ci-cd
+```
+
+1. Ouvrir la Pull Request vers `dev` : le workflow **CI** se lance sur la Pull Request (onglet Checks). Fusionner quand il est vert.
+2. Exiger la CI avant toute fusion : Settings → Rules → Rulesets → `protect-main-and-dev` → cocher **Require status checks to pass**, ajouter le contrôle `build-and-test`, enregistrer (c'est le point laissé en attente à l'étape 3b).
+3. Ouvrir la Pull Request `dev` → `main` (mise en production), attendre la CI, fusionner : le workflow **Deploy** se lance (onglet Actions).
+4. Vérifier `http://<elastic-ip>/health`, et dans la console ECR, la nouvelle image étiquetée avec le commit de fusion.
+
+- **Vérification :** une Pull Request lance la CI et ne peut être fusionnée que verte ; une fusion dans `main` déploie automatiquement ; l'onglet Actions montre l'historique des déploiements. PR : **\_\_**.
+
+_À quoi l'étape a servi : à automatiser tout le chemin du code jusqu'à la production : chaque Pull Request est compilée et testée, chaque fusion dans `main` est testée, empaquetée, déployée et vérifiée. Pourquoi : le déploiement devient un non-événement, reproductible et tracé ; l'accès de GitHub à AWS passe par des identifiants temporaires limités à ce dépôt et à `main`, sans aucune clé stockée ; la protection de branche garantit qu'aucun code non testé n'atteint `dev` ni `main`._
+
+### Étape 10 G – Variante gratuite : tout en Docker sur un serveur Free plan [ ]
+
+- **Quoi :** déployer toute l'application (base PostgreSQL, API, front Angular) en conteneurs Docker sur **un seul** serveur EC2, avec un compte AWS **Free plan**, et des images publiées gratuitement dans GitHub Container Registry. Remplace les étapes 10 et 11 (chemin A).
+- **Pourquoi :** contrainte de budget nul. Un compte Free plan ne peut pas être facturé, et un seul petit serveur consomme le moins possible des crédits offerts. Docker Compose décrit toute l'application dans un fichier : la même description tourne en local et sur AWS.
+
+Architecture :
+
+```text
+Internet ── HTTP 80 ──► EC2 t3.micro (Amazon Linux 2023 + Docker Compose)
+                         proxy (Caddy, seul port ouvert : 80)
+                           ├─ /api/*, /health, /swagger, /openapi/* ──► api (image du back)
+                           └─ tout le reste                         ──► front (image du front Angular)
+                         migrate (bundle de migrations : s'exécute, puis s'arrête)
+                         db (PostgreSQL 16, volume Docker, aucun port publié)
+
+GitHub Container Registry   images publiques du back et du front (gratuit)
+SSM Parameter Store         mot de passe PostgreSQL chiffré et réglages (gratuit)
+SSM Session Manager         accès au serveur sans SSH (gratuit)
+```
+
+Le front et l'API sont servis par la **même adresse** : le navigateur appelle `/api/...` sur le site qu'il affiche, donc pas de configuration CORS à prévoir.
+
+```bash
+git switch dev
+git pull
+git switch -c chore/aws-free-deployment dev
+```
+
+#### Étape 10 G a – Compte AWS Free plan
+
+1. Créer le compte sur aws.amazon.com et choisir le **Free plan** (et non le Paid plan). Le Free plan offre des crédits (100 $ à l'inscription, jusqu'à 100 $ de plus en réalisant des activités de découverte proposées par la console, comme créer un budget ou lancer une instance) utilisables pendant **6 mois**. Lire les conditions affichées à l'inscription : elles peuvent évoluer.
+2. Un compte Free plan **n'est jamais facturé**. À la fin des 6 mois ou des crédits, il est fermé, sauf passage au Paid plan : prévoir la soutenance dans cette période, et sauvegarder la base avant l'échéance (étape 10 G h).
+3. Activer l'authentification à deux facteurs (MFA) sur le compte racine, puis créer un accès personnel d'administration (IAM Identity Center) et l'utiliser pour la suite.
+4. Choisir la région **eu-west-3 (Paris)** pour toutes les ressources.
+5. Créer un budget (Billing and Cost Management → Budgets → **Zero spend budget**) pour être alerté de toute consommation hors crédits. Suivre ensuite les crédits restants dans Billing and Cost Management → Credits.
+
+Estimation de la consommation, tarifs de Paris (à vérifier avec AWS Pricing Calculator) : instance `t3.micro` environ 9 $ par mois, adresse IPv4 publique environ 3,60 $, disque de 16 Gio environ 1,50 $, soit **environ 14 $ par mois**, environ 85 $ sur 6 mois : couvert par les crédits. Un `t3.small` doublerait le coût de l'instance : inutile, toute l'application occupe moins de 200 Mio de mémoire.
+
+L'AWS CLI n'est pas nécessaire sur le poste pour cette variante : tout se fait dans la console, et les images passent par GitHub.
+
+#### Étape 10 G b – Images dans GitHub Container Registry
+
+GitHub Container Registry (`ghcr.io`) héberge gratuitement les images **publiques**, sans limite de taille ni de durée. Les images ne contiennent aucun secret (l'étape 9 l'a vérifié avec `.dockerignore`), elles peuvent donc être publiques ; le serveur les télécharge sans authentification.
+
+Relier l'image au dépôt : dans le `Dockerfile`, étape `runtime`, ajouter sous la ligne `FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime` :
+
+```dockerfile
+LABEL org.opencontainers.image.source=https://github.com/Grand-Cinema-Studi/grand-cinema-backend
+```
+
+GitHub rattache ainsi le paquet au dépôt, ce qui permettra au workflow de l'étape 11 G d'y publier.
+
+Nom de l'image du back : `ghcr.io/grand-cinema-studi/grand-cinema-backend:<commit>` (tout en minuscules, obligatoire pour un nom d'image).
+
+**Contrat de l'image du front**, construite dans le dépôt du front (Angular compilé, servi par nginx) :
+
+- elle écoute sur le port 80 ;
+- elle renvoie `index.html` pour toute route inconnue (navigation Angular) ;
+- elle appelle l'API par des adresses relatives (`/api/schedule`), sans nom de serveur.
+
+Tant que cette image n'existe pas, l'image `nginx:alpine` (page d'accueil nginx) tient sa place.
+
+#### Étape 10 G c – Secrets et réglages dans Parameter Store
+
+Générer le mot de passe de la base sur le poste :
+
+```bash
+openssl rand -hex 32
+```
+
+Uniquement des caractères hexadécimaux : un `;` dans le mot de passe casserait la chaîne de connexion, où il sépare les paramètres.
+
+Console Systems Manager → Parameter Store → Create parameter (niveau Standard, gratuit) :
+
+| Nom | Type | Valeur |
+|---|---|---|
+| `/grandcinema/prod/postgres-password` | **SecureString** | le mot de passe généré |
+| `/grandcinema/prod/swagger-enabled` | String | `false` |
+| `/grandcinema/prod/front-image` | String | `nginx:alpine` (plus tard : `ghcr.io/grand-cinema-studi/grand-cinema-frontend:latest`) |
+
+Le mot de passe n'est écrit nulle part ailleurs : ni dans le dépôt, ni dans une image, ni dans GitHub. Les deux autres paramètres changent le comportement en production sans modifier le code.
+
+#### Étape 10 G d – Serveur EC2
+
+**Groupe de sécurité.** Console EC2 → Security Groups → Create security group `grandcinema-sg`, dans le VPC par défaut, avec une seule règle entrante : HTTP, port 80, source `0.0.0.0/0`. Pas de port 22 (SSH), pas de port 5432 (PostgreSQL) : la base n'est joignable que par les conteneurs du serveur.
+
+**Rôle IAM du serveur.** IAM → Roles → Create role → AWS service, cas d'usage **EC2** :
+
+- politique gérée `AmazonSSMManagedInstanceCore` (Session Manager et commandes à distance) ;
+- nom : `grandcinema-ec2-role` ;
+- après création, politique en ligne `read-grandcinema-parameters` :
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "ssm:GetParameter",
+      "Resource": "arn:aws:ssm:eu-west-3:<compte>:parameter/grandcinema/prod/*"
+    }
+  ]
+}
+```
+
+`<compte>` : numéro de compte à douze chiffres, affiché en haut à droite de la console.
+
+**Instance.** EC2 → Launch instance :
+
+- nom : `grandcinema` ; image : **Amazon Linux 2023** (x86_64) ; type : **`t3.micro`** (marqué « Free tier eligible ») ;
+- paire de clés : **Proceed without a key pair** ;
+- réseau : VPC par défaut, **Auto-assign public IP : Enable**, groupe de sécurité `grandcinema-sg` ;
+- stockage : 16 Gio gp3 ;
+- Advanced details → **IAM instance profile : `grandcinema-ec2-role`** ; **User data** :
+
+```bash
+#!/bin/bash
+dnf install -y docker cronie
+systemctl enable --now docker crond
+
+mkdir -p /usr/local/lib/docker/cli-plugins
+curl -fsSL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
+chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+dd if=/dev/zero of=/swapfile bs=1M count=2048
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
+```
+
+- Docker et le greffon Docker Compose (absent des dépôts d'Amazon Linux, d'où le téléchargement) ;
+- `cronie` : planificateur de tâches, pour les sauvegardes (étape 10 G h) ;
+- 2 Gio de mémoire d'échange (swap) : filet de sécurité pour un serveur de 1 Gio de mémoire, pendant le téléchargement des images ou un pic de charge.
+
+**Adresse IP fixe.** EC2 → Elastic IPs → Allocate, puis Associate à l'instance `grandcinema`. L'adresse ne change plus aux redémarrages : c'est l'adresse donnée au jury et à GitHub Actions. Une adresse IPv4 publique est décomptée des crédits, qu'elle soit fixe ou non.
+
+**Vérifier.** EC2 → instance → Connect → **Session Manager** → Connect (quelques minutes après le premier démarrage) :
+
+```bash
+docker --version
+docker compose version
+free -h
+```
+
+#### Étape 10 G e – Fichiers de déploiement
+
+Trois fichiers, versionnés dans `deploy/`.
+
+`deploy/docker-compose.prod.yml` :
+
+```yaml
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: grandcinema
+      POSTGRES_USER: grandcinema
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U grandcinema -d grandcinema"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    image: ${API_IMAGE:?}
+    entrypoint: ["/app/efbundle"]
+    environment:
+      ConnectionStrings__Default: Host=db;Port=5432;Database=grandcinema;Username=grandcinema;Password=${POSTGRES_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    image: ${API_IMAGE:?}
+    restart: unless-stopped
+    environment:
+      ConnectionStrings__Default: Host=db;Port=5432;Database=grandcinema;Username=grandcinema;Password=${POSTGRES_PASSWORD}
+      Swagger__Enabled: ${SWAGGER_ENABLED:-false}
+      TZ: Europe/Paris
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  front:
+    image: ${FRONT_IMAGE:?}
+    restart: unless-stopped
+
+  proxy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - api
+      - front
+
+volumes:
+  db-data:
+  caddy-data:
+```
+
+- **`db`** : aucun `ports:`, donc PostgreSQL n'est joignable que par les autres conteneurs (sous le nom `db`), jamais depuis Internet. Les données vivent dans le volume `db-data` et survivent aux redéploiements.
+- **`migrate`** : la même image que l'API, lancée sur le bundle de migrations. Il attend que la base soit prête (`service_healthy`), applique les migrations, puis s'arrête.
+- **`api`** : ne démarre que si `migrate` a réussi (`service_completed_successfully`). Si une migration échoue, la nouvelle version de l'API ne démarre pas.
+- **`front`** et **`proxy`** : le proxy Caddy est le seul conteneur exposé ; il oriente chaque requête vers l'API ou le front.
+- **`${VARIABLE:?}`** : Compose refuse de démarrer si la variable manque, plutôt que de lancer une base sans mot de passe.
+- `restart: unless-stopped` : les conteneurs redémarrent après un plantage ou un redémarrage du serveur.
+
+`deploy/Caddyfile` :
+
+```text
+:80 {
+	@api path /api/* /health /swagger /swagger/* /openapi/*
+	handle @api {
+		reverse_proxy api:8080
+	}
+
+	handle {
+		reverse_proxy front:80
+	}
+}
+```
+
+Caddy écoute sur le port 80 ; les chemins de l'API vont au conteneur `api` (port 8080), tout le reste au front. Le fichier Caddy exige une indentation par tabulations.
+
+`deploy/deploy.sh` :
+
+```bash
+#!/usr/bin/env bash
+# Deploys the whole application on the EC2 instance with Docker Compose.
+# Usage: deploy.sh <commit-sha>
+# The image ghcr.io/grand-cinema-studi/grand-cinema-backend:<commit-sha> must have been pushed.
+set -euo pipefail
+
+COMMIT="$1"
+REGION="eu-west-3"
+APP_DIR="/opt/grandcinema"
+RAW_URL="https://raw.githubusercontent.com/Grand-Cinema-Studi/grand-cinema-backend/$COMMIT/deploy"
+
+parameter() {
+    aws ssm get-parameter --region "$REGION" --name "/grandcinema/prod/$1" --with-decryption --query Parameter.Value --output text
+}
+
+mkdir -p "$APP_DIR"
+cd "$APP_DIR"
+
+curl -fsSL "$RAW_URL/docker-compose.prod.yml" -o docker-compose.yml
+curl -fsSL "$RAW_URL/Caddyfile" -o Caddyfile
+
+umask 077
+cat > .env <<EOF
+POSTGRES_PASSWORD=$(parameter postgres-password)
+SWAGGER_ENABLED=$(parameter swagger-enabled)
+FRONT_IMAGE=$(parameter front-image)
+API_IMAGE=ghcr.io/grand-cinema-studi/grand-cinema-backend:$COMMIT
+EOF
+
+docker compose pull
+docker compose up -d --remove-orphans
+docker image prune -af
+
+for attempt in $(seq 1 30); do
+    if curl -fs http://localhost/health > /dev/null; then
+        echo "Deployed commit $COMMIT"
+        exit 0
+    fi
+    sleep 2
+done
+
+echo "The API did not become healthy" >&2
+docker compose logs --tail 50 migrate api >&2
+exit 1
+```
+
+```bash
+chmod +x deploy/deploy.sh
+```
+
+Ce que fait le script :
+
+1. télécharge le fichier Compose et le Caddyfile **du commit déployé** (le dépôt est public) : le serveur n'a jamais de version périmée de ces fichiers, et rien n'est à recopier à la main ;
+2. lit les paramètres dans Parameter Store (grâce au rôle du serveur) et écrit `/opt/grandcinema/.env`, lisible par `root` seul (`umask 077`) ;
+3. `docker compose pull` télécharge les images, `up -d` ne recrée que les conteneurs dont l'image a changé (en général `migrate` et `api`) : la base, le front et le proxy continuent de tourner ;
+4. supprime les images devenues inutiles, pour ne pas remplir le disque ;
+5. attend que `/health` réponde, sinon affiche les journaux de `migrate` et `api`, et échoue.
+
+#### Étape 10 G f – Premier déploiement, à la main
+
+Sur le poste, enregistrer et publier les fichiers (le serveur les lira sur GitHub) :
+
+```bash
+git add Dockerfile deploy/
+git commit -m "chore(deploy): add free tier Docker Compose deployment"
+git push -u origin chore/aws-free-deployment
+```
+
+Créer un jeton GitHub pour publier l'image à la main : GitHub → Settings (du compte) → Developer settings → Personal access tokens → **Tokens (classic)** → Generate new token, droit **`write:packages`**, expiration 7 jours. Puis :
+
+```bash
+COMMIT=$(git rev-parse HEAD)
+IMAGE=ghcr.io/grand-cinema-studi/grand-cinema-backend:$COMMIT
+
+echo <jeton> | docker login ghcr.io -u <utilisateur-github> --password-stdin
+docker build -t $IMAGE .
+docker push $IMAGE
+echo $COMMIT
+```
+
+Sur un Mac à puce Apple : `docker build --platform linux/amd64 -t $IMAGE .` (le serveur est en x86_64).
+
+Après ce premier envoi, dans GitHub → organisation `Grand-Cinema-Studi` → **Packages** → `grand-cinema-backend` → **Package settings** :
+
+- **Change visibility → Public** (le serveur télécharge sans authentification) ;
+- **Manage Actions access** : vérifier que le dépôt `grand-cinema-backend` y figure avec le rôle **Write**, sinon l'ajouter (pour l'étape 11 G).
+
+Si l'envoi est refusé, vérifier dans les réglages de l'organisation (Settings → Packages) que les membres peuvent créer des paquets publics.
+
+Sur le serveur, dans le terminal Session Manager, avec le commit affiché :
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Grand-Cinema-Studi/grand-cinema-backend/<commit>/deploy/deploy.sh -o /tmp/deploy.sh
+sudo bash /tmp/deploy.sh <commit>
+```
+
+Le script est téléchargé puis exécuté en deux temps (et non `curl ... | bash`) : si le téléchargement échoue, rien n'est exécuté. Il est lu au commit exact, sur le dépôt du projet.
+
+Résultat attendu : création du réseau et des volumes, migrations appliquées sur la base vide, puis `Deployed commit <commit>`.
+
+#### Étape 10 G g – Vérifier
+
+Depuis le poste, avec l'Elastic IP :
+
+```bash
+curl http://<elastic-ip>/health
+curl http://<elastic-ip>/api/schedule
+```
+
+Résultats attendus : `Healthy`, puis `{"date":"<date du jour à Paris>","movies":[]}`. `http://<elastic-ip>/` affiche la page du front (pour l'instant, la page d'accueil nginx).
+
+**Données de démonstration** (terminal Session Manager) :
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Grand-Cinema-Studi/grand-cinema-backend/<commit>/docs/database/seed-dev.sql -o /tmp/seed-dev.sql
+cd /opt/grandcinema
+sudo docker compose exec -T db psql -U grandcinema -d grandcinema < /tmp/seed-dev.sql
+```
+
+**Swagger pour le jury.** Passer `/grandcinema/prod/swagger-enabled` à `true`, relancer `sudo bash /tmp/deploy.sh <commit>` (même commit : seule l'API redémarre), ouvrir `http://<elastic-ip>/swagger`. Remettre `false` et relancer après la démonstration.
+
+**Brancher le front**, quand son image existe : passer `/grandcinema/prod/front-image` à `ghcr.io/grand-cinema-studi/grand-cinema-frontend:latest` et relancer le déploiement.
+
+**Revenir à une version précédente.** Relancer le script avec un commit antérieur dont l'image existe (liste dans les Packages GitHub) : `sudo bash /tmp/deploy.sh <ancien-commit>`, après avoir téléchargé le script de ce commit. Les migrations ne sont jamais annulées : une migration doit rester compatible avec la version précédente de l'API.
+
+#### Étape 10 G h – Sauvegardes et fin du Free plan
+
+La base n'est plus gérée par RDS : les sauvegardes sont à organiser. Sauvegarde quotidienne, sept jours conservés (terminal Session Manager) :
+
+```bash
+sudo mkdir -p /opt/grandcinema/backups
+sudo tee /etc/cron.daily/grandcinema-backup > /dev/null <<'SCRIPT'
+#!/bin/bash
+cd /opt/grandcinema
+docker compose exec -T db pg_dump -U grandcinema grandcinema | gzip > backups/grandcinema-$(date +%F).sql.gz
+find backups -name '*.sql.gz' -mtime +7 -delete
+SCRIPT
+sudo chmod 755 /etc/cron.daily/grandcinema-backup
+sudo /etc/cron.daily/grandcinema-backup
+ls -lh /opt/grandcinema/backups
+```
+
+Ces sauvegardes sont sur le disque du serveur : elles protègent d'une erreur de manipulation, pas de la perte du serveur. **Avant la fin du Free plan**, récupérer la dernière sauvegarde (par exemple en l'affichant dans le terminal Session Manager avec `zcat`, ou en la déposant temporairement dans un stockage) ; les images, elles, restent sur GitHub, indépendamment d'AWS.
+
+Limites assumées de cette variante :
+
+- **un seul serveur** pour tout : s'il tombe, l'application est indisponible le temps de le relancer ;
+- **HTTP seulement** : à compléter par un nom de domaine et HTTPS avant l'authentification (US 2.1). Caddy obtient et renouvelle seul un certificat Let's Encrypt dès qu'on remplace `:80` par un nom de domaine dans le Caddyfile et qu'on ouvre le port 443 ;
+- **sauvegardes manuelles**, sans restauration à un instant précis comme RDS ;
+- **durée limitée** aux 6 mois du Free plan.
+
+Passer plus tard à l'architecture du chemin A ne demande aucun changement de code : remplacer le service `db` par une base RDS revient à changer la chaîne de connexion.
+
+- **Vérification :** `/health` répond `Healthy` sur l'Elastic IP ; `/api/schedule` renvoie la date du jour à Paris ; seul le port 80 est ouvert ; aucun secret dans le dépôt, les images ou GitHub ; une sauvegarde existe dans `/opt/grandcinema/backups`. PR : **\_\_**.
+
+_À quoi l'étape a servi : à mettre en ligne toute l'application sans aucun coût, en restant sur AWS. Pourquoi : le Free plan garantit l'absence de facturation, un seul serveur `t3.micro` reste largement dans les crédits, et GitHub Container Registry évite tout coût de stockage d'images. La sécurité n'est pas sacrifiée : un seul port ouvert, base invisible depuis Internet, mot de passe chiffré dans Parameter Store et lu au déploiement, accès au serveur sans SSH. Les compromis (un serveur, sauvegardes à la main, durée de 6 mois) sont connus et réversibles._
+
+### Étape 11 G – Variante gratuite : intégration et déploiement continus [ ]
+
+- **Quoi :** les mêmes workflows qu'à l'étape 11, adaptés à la variante gratuite : l'image est publiée dans GitHub Container Registry, et le déploiement lance `deploy/deploy.sh` sur le serveur.
+- **Pourquoi :** GitHub Actions est gratuit pour un dépôt public ; GitHub publie dans son propre registre avec le jeton fourni à chaque workflow, sans aucun secret à créer.
+
+```bash
+git switch dev
+git pull
+git switch -c chore/ci-cd dev
+mkdir -p .github/workflows
+```
+
+**Intégration continue.** Créer `.github/workflows/ci.yml` exactement comme à l'étape 11a.
+
+**Accès de GitHub à AWS (OIDC).** Créer le fournisseur d'identité et le rôle `grandcinema-github-deploy` comme à l'étape 11b (même politique de confiance, limitée au dépôt et à `main`), mais avec cette politique de permissions, sans ECR :
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "ssm:SendCommand",
+      "Resource": [
+        "arn:aws:ec2:eu-west-3:<compte>:instance/<id-instance>",
+        "arn:aws:ssm:eu-west-3::document/AWS-RunShellScript"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": "ssm:GetCommandInvocation",
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+Le workflow peut seulement lancer une commande sur ce serveur.
+
+**Variables du dépôt** (Settings → Secrets and variables → Actions → Variables) : `AWS_REGION` (`eu-west-3`), `AWS_ROLE_ARN`, `EC2_INSTANCE_ID`, `API_URL` (`http://<elastic-ip>`).
+
+**Déploiement continu.** `.github/workflows/deploy.yml` :
+
+```yaml
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/grand-cinema-studi/grand-cinema-backend:${{ github.sha }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - run: dotnet test --configuration Release
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the image
+        run: |
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Deploy on EC2
+        run: |
+          INSTANCE_ID="${{ vars.EC2_INSTANCE_ID }}"
+          SCRIPT_URL="https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/deploy/deploy.sh"
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "Deploy ${{ github.sha }}" \
+            --parameters "{\"commands\":[\"curl -fsSL $SCRIPT_URL -o /tmp/deploy.sh\",\"bash /tmp/deploy.sh ${{ github.sha }}\"]}" \
+            --query Command.CommandId --output text)
+          if ! aws ssm wait command-executed --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID"; then
+            aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query "[Status, StandardErrorContent]" --output text
+            exit 1
+          fi
+          aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query StandardOutputContent --output text
+
+      - name: Check the API
+        run: curl --fail --silent --show-error --retry 5 --retry-delay 5 "${{ vars.API_URL }}/health"
+```
+
+Différences avec l'étape 11d :
+
+- **`packages: write`** et `docker/login-action` : le workflow publie l'image dans GitHub Container Registry avec le jeton `GITHUB_TOKEN`, créé automatiquement pour chaque exécution et expiré à sa fin ;
+- **le nom de l'image est écrit en minuscules** (`env.IMAGE`) : le nom du dépôt contient des majuscules, interdites dans un nom d'image ;
+- **le serveur reçoit deux commandes** : télécharger `deploy.sh` au commit déployé, puis l'exécuter (Run Command s'exécute en `root`, sans `sudo`).
+
+Enregistrer et activer, comme à l'étape 11e :
+
+```bash
+git add .github/workflows
+git commit -m "chore(ci): add CI and deployment workflows"
+git push -u origin chore/ci-cd
+```
+
+Pull Request vers `dev` (CI verte), contrôle `build-and-test` obligatoire dans le ruleset, puis Pull Request `dev` → `main` : le workflow **Deploy** publie l'image et met à jour le serveur. Le jeton classique de l'étape 10 G f n'est plus utile : le révoquer (GitHub → Settings → Developer settings → Personal access tokens).
+
+- **Vérification :** une fusion dans `main` publie l'image `ghcr.io/grand-cinema-studi/grand-cinema-backend:<commit>` et la déploie ; `/health` répond ; l'onglet Actions garde l'historique. PR : **\_\_**.
+
+_À quoi l'étape a servi : à automatiser la variante gratuite de bout en bout, toujours sans coût : GitHub Actions et GitHub Container Registry sont gratuits pour un dépôt public, et l'accès à AWS passe par OIDC, limité à une seule action sur un seul serveur. Pourquoi : chaque fusion dans `main` produit une image identifiée par son commit et la met en ligne en quelques minutes, sans geste manuel ni secret stocké dans GitHub._
 
 ---
 
@@ -1373,7 +3297,7 @@ Lien avec les tests :
 
 - **tests unitaires (étape 5)** : le parcours commence directement au point 2. Le test crée lui-même le handler, et la doublure `Mock<IScreeningReadRepository>` remplace le point 3 ;
 - **test d'intégration (après l'étape 7)** : vérifie le point 3 avec une vraie base PostgreSQL ;
-- **endpoint et Swagger (après l'étape 7)** : mettent en place les points 1 et 5.
+- **endpoint et Swagger (étape 7 ter)** : mettent en place les points 1 et 5.
 
 _À quoi sert cette section : à avoir sous les yeux le trajet complet d'une requête, de l'URL appelée par Angular jusqu'à PostgreSQL et retour, en sachant dans quelle couche se trouve chaque traitement. Pourquoi : c'est une question classique de soutenance (« décrivez le parcours d'une requête dans votre application ») ; ce schéma montre concrètement le rôle de chaque couche de la Clean Architecture, de l'injection de dépendances et des abstractions._
 
@@ -1389,6 +3313,11 @@ docker compose up -d                                      # démarrer PostgreSQL
 docker compose down                                       # arrêter PostgreSQL (les données restent dans le volume)
 dotnet ef migrations add <Nom> --project src/GrandCinema.Infrastructure --startup-project src/GrandCinema.Api --output-dir Persistence/Migrations   # nouvelle migration
 dotnet ef database update --project src/GrandCinema.Infrastructure --startup-project src/GrandCinema.Api                                         # appliquer les migrations
+docker compose exec -T db psql -U <utilisateur> -d <base> < docs/database/seed-dev.sql   # données de démonstration
+scripts/reset-demo-screenings.sh                         # remettre les séances de démonstration à aujourd'hui et demain
+docker build -t grandcinema-api:local .                  # construire l'image de l'API
+sudo /opt/grandcinema/run-api.sh <image>                 # chemin A, sur le serveur EC2 : déployer une image
+sudo bash /tmp/deploy.sh <commit>                        # chemin B, sur le serveur EC2 : déployer un commit (script téléchargé au préalable)
 git switch -c feature/us-<n>-<slug> dev               # nouvelle branche de fonctionnalité
 git push -u origin <branche>                              # publier une branche
 ```
@@ -1399,18 +3328,31 @@ git push -u origin <branche>                              # publier une branche
 - **Pourquoi sept tables et non cinq ?** Normalisation (troisième forme normale) et capacité décrite par salle.
 - **Pourquoi pas MediatR ?** Licence commerciale depuis 2025, et le besoin est couvert par deux interfaces simples.
 - **Pourquoi le code est-il en anglais alors que le MCD est en français ?** L'anglais est la langue de l'écosystème .NET ; une seule langue évite les noms hybrides, et le tableau de correspondance en tête de ce journal fait le lien avec le Bloc 1.
-- **Pourquoi ranger la couche Application par fonctionnalité ?** Tout ce qui concerne un cas d'usage (requête ou commande, gestionnaire, DTO) est au même endroit, et ajouter une story ne touche qu'un dossier ; les interfaces partagées (repositories) restent dans Abstractions pour qu'une fonctionnalité ne dépende pas d'une autre.
+- **Pourquoi ranger la couche Application par fonctionnalité ?** Tout ce qui concerne un cas d'usage (requête ou commande, gestionnaire, DTO) est au même endroit, et ajouter une story ne touche qu'un dossier ; les interfaces partagées (repositories) restent dans Abstractions pour qu'une fonctionnalité ne dépende pas d'une autre. Les endpoints de l'Api suivent le même découpage (`Endpoints/Screenings/` pour `Features/Screenings/`) : une fonctionnalité porte le même nom dans les deux couches.
 - **Décrivez le parcours d'une requête dans votre application.** Voir la section « Référence – Parcours d'une requête dans le code » : endpoint (Api), handler (Application), repository (Infrastructure), PostgreSQL, puis retour en DTO et en JSON.
 - **Pourquoi un repository pour la programmation et une projection SQL pour le suivi des réservations ?** La programmation lit peu de données et sa logique (regroupement, tri, date par défaut) se teste en unitaire dans le handler ; le suivi calcule des agrégats, qu'il vaut mieux faire calculer par PostgreSQL que charger en entités. La règle est écrite dans l'ADR 0001 (`docs/adr`).
+- **Pourquoi des données de démonstration en SQL et pas avec EF Core ?** Pour montrer la maîtrise du SQL (insertions, `ON CONFLICT`, dates calculées par PostgreSQL) et disposer d'un script rejouable aussi en production pour une démonstration. `HasData` aurait écrit ces données dans les migrations, donc en production, avec des dates figées ; il est réservé aux données réelles et stables (salles, places).
 - **Pourquoi Clean Architecture ?** Domaine indépendant du framework et de la base, testabilité, cohérence avec l'architecture modulaire et évolutive du Bloc 1.
+
+## Questions probables du jury (mise en ligne)
+
+- **Pourquoi EC2 et Docker ?** L'image Docker est identique en local, dans la CI et sur AWS ; EC2 laisse voir chaque brique (serveur, réseau, droits). Un service plus intégré (Elastic Beanstalk, ECS) masquerait ces mécanismes ; l'image permettrait d'y passer sans changer le code.
+- **Où sont les secrets en production ?** Dans Parameter Store, chiffrés (SecureString). Le serveur les lit grâce à son rôle IAM au moment du déploiement ; ils ne sont ni dans le dépôt, ni dans l'image, ni dans GitHub.
+- **Comment GitHub Actions accède-t-il à AWS ?** Par OIDC : des identifiants temporaires, limités à ce dépôt et à la branche `main`, avec les seuls droits de pousser une image et de lancer le script de déploiement. Aucune clé AWS n'est stockée.
+- **La base est-elle exposée sur Internet ?** Non : RDS sans accès public, et son pare-feu n'accepte que le groupe de sécurité de l'API. Le serveur lui-même n'a aucun port d'administration ouvert (Session Manager au lieu de SSH).
+- **Quand les migrations sont-elles appliquées ?** Par le script de déploiement, avec le bundle de la nouvelle image, avant de la démarrer. Jamais au démarrage de l'API : si elles échouent, l'ancienne version continue de tourner.
+- **Comment revenir en arrière ?** Chaque image est étiquetée avec son commit : relancer le script avec l'étiquette précédente. Les migrations doivent rester compatibles avec la version précédente.
+- **Pourquoi PostgreSQL en conteneur plutôt que RDS ?** Contrainte de budget nul : le compte Free plan n'est jamais facturé et un seul serveur consomme le moins de crédits possible. Les compromis sont connus (sauvegardes planifiées à la main, un seul serveur) ; passer à RDS ne demande que de changer la chaîne de connexion.
+- **Pourquoi un proxy Caddy devant l'API et le front ?** Un seul port ouvert, une seule adresse pour le front et l'API (donc pas de CORS), et HTTPS automatique dès qu'un nom de domaine sera ajouté.
+- **Comment est réglé le problème du fuseau horaire ?** `TZ=Europe/Paris` dans le conteneur : « aujourd'hui » est le jour à Paris, même sur un serveur en UTC.
 
 ## Phases suivantes (à compléter)
 
-- Phase 2 : authentification (US 2.1), Swagger, première user story complète avec feature branch et Pull Request.
-- Phase 3 : fin de l'US 1.1 (repository, endpoint, Swagger) et places restantes (US 2.2).
+- Phase 2 : authentification (US 2.1), avec HTTPS avant la mise en ligne (voir l'étape 10j).
+- Phase 3 : places restantes (US 2.2). L'US 1.1 est terminée aux étapes 7 bis à 7 quater.
 - Phase 4 : réservation avec verrouillage et expiration (US 2.3), bug de double réservation, test de reproduction et correctif.
 - Phase 5 : programmation et suivi des réservations (US 5.2, 5.3) ; avant l'US 5.3, rédiger l'ADR de la stratégie de lecture (détaillé ci-dessous).
-- Phase 6 : tests unitaires, couverture, SonarCloud, déploiement.
+- Phase 6 : tests de l'API complète (`WebApplicationFactory`), couverture, SonarCloud. Le déploiement continu est en place depuis l'étape 11.
 
 ### Phase 5 – Étape préalable à l'US 5.3 : ADR de la stratégie de lecture [ ]
 
