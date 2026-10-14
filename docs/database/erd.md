@@ -1,6 +1,6 @@
 # Schéma entité-relation – Grand Cinema
 
-Schéma de la base PostgreSQL, tel que créé par la migration `InitialSchema`. Le script SQL correspondant est [schema.sql](schema.sql).
+Schéma de la base PostgreSQL, tel que créé par les migrations `InitialSchema` et `AddScreeningStartsAtIndex`. Le script SQL correspondant est [schema.sql](schema.sql).
 
 ```mermaid
 erDiagram
@@ -90,7 +90,14 @@ L'énoncé cite cinq tables. `Rooms` et `ReservedSeats` sont ajoutées pour resp
 | `UNIQUE (Name)` | `Rooms` | deux salles ne portent pas le même nom |
 | `CHECK (Capacity > 0)` | `Rooms` | une salle a au moins une place |
 
-Index non uniques : `Screenings (RoomId, StartsAt)` pour retrouver les séances d'une salle, ainsi que les index créés automatiquement sur les clés étrangères.
+Index non uniques :
+
+| Index | Table | Requête servie |
+|---|---|---|
+| `IX_Screenings_StartsAt` (`StartsAt`) | `Screenings` | programmation d'un jour, toutes salles confondues (`GET /api/schedule`) ; ajouté par la migration `AddScreeningStartsAtIndex` |
+| `IX_Screenings_RoomId_StartsAt` (`RoomId`, `StartsAt`) | `Screenings` | séances d'une salle, pour vérifier qu'une salle n'a pas deux séances qui se chevauchent |
+
+L'index composite `(RoomId, StartsAt)` ne sert pas pour une recherche sur `StartsAt` seul : il est trié d'abord par `RoomId` (règle du préfixe gauche), d'où l'index dédié. S'y ajoutent les index créés automatiquement sur les clés étrangères.
 
 ## Suppressions
 
