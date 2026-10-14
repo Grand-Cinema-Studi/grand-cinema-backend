@@ -3330,7 +3330,7 @@ git push -u origin <branche>                              # publier une branche
 - **Pourquoi le code est-il en anglais alors que le MCD est en français ?** L'anglais est la langue de l'écosystème .NET ; une seule langue évite les noms hybrides, et le tableau de correspondance en tête de ce journal fait le lien avec le Bloc 1.
 - **Pourquoi ranger la couche Application par fonctionnalité ?** Tout ce qui concerne un cas d'usage (requête ou commande, gestionnaire, DTO) est au même endroit, et ajouter une story ne touche qu'un dossier ; les interfaces partagées (repositories) restent dans Abstractions pour qu'une fonctionnalité ne dépende pas d'une autre. Les endpoints de l'Api suivent le même découpage (`Endpoints/Screenings/` pour `Features/Screenings/`) : une fonctionnalité porte le même nom dans les deux couches.
 - **Décrivez le parcours d'une requête dans votre application.** Voir la section « Référence – Parcours d'une requête dans le code » : endpoint (Api), handler (Application), repository (Infrastructure), PostgreSQL, puis retour en DTO et en JSON.
-- **Pourquoi un repository pour la programmation et une projection SQL pour le suivi des réservations ?** La programmation lit peu de données et sa logique (regroupement, tri, date par défaut) se teste en unitaire dans le handler ; le suivi calcule des agrégats, qu'il vaut mieux faire calculer par PostgreSQL que charger en entités. La règle est écrite dans l'ADR 0001 (`docs/adr`).
+- **Pourquoi un repository pour la programmation et une projection SQL pour le suivi des réservations ?** La programmation lit peu de données et sa logique (regroupement, tri, date par défaut) se teste en unitaire dans le handler ; le suivi calcule des agrégats, qu'il vaut mieux faire calculer par PostgreSQL que charger en entités. La règle sera écrite dans l'ADR de la stratégie de lecture, dans le dépôt de documentation (`grand-cinema-docs/adr`), avant l'US 5.3 (voir la phase 5).
 - **Pourquoi des données de démonstration en SQL et pas avec EF Core ?** Pour montrer la maîtrise du SQL (insertions, `ON CONFLICT`, dates calculées par PostgreSQL) et disposer d'un script rejouable aussi en production pour une démonstration. `HasData` aurait écrit ces données dans les migrations, donc en production, avec des dates figées ; il est réservé aux données réelles et stables (salles, places).
 - **Pourquoi Clean Architecture ?** Domaine indépendant du framework et de la base, testabilité, cohérence avec l'architecture modulaire et évolutive du Bloc 1.
 
@@ -3351,28 +3351,32 @@ git push -u origin <branche>                              # publier une branche
 - Phase 2 : authentification (US 2.1), avec HTTPS avant la mise en ligne (voir l'étape 10j).
 - Phase 3 : places restantes (US 2.2). L'US 1.1 est terminée aux étapes 7 bis à 7 quater.
 - Phase 4 : réservation avec verrouillage et expiration (US 2.3), bug de double réservation, test de reproduction et correctif.
-- Phase 5 : programmation et suivi des réservations (US 5.2, 5.3) ; avant l'US 5.3, rédiger l'ADR de la stratégie de lecture (détaillé ci-dessous).
+- Phase 5 : programmation et suivi des réservations (US 5.2, 5.3) ; avant l'US 5.3, rédiger l'ADR de la stratégie de lecture dans le dépôt de documentation (détaillé ci-dessous).
 - Phase 6 : tests de l'API complète (`WebApplicationFactory`), couverture, SonarCloud. Le déploiement continu est en place depuis l'étape 11.
 
 ### Phase 5 – Étape préalable à l'US 5.3 : ADR de la stratégie de lecture [ ]
 
 - **Quoi :** rédiger un ADR (Architecture Decision Record), c'est-à-dire une fiche courte qui consigne une décision d'architecture : son contexte, la décision, les alternatives écartées et les conséquences. Ici : quand le côté lecture passe par un repository (entités) et quand il passe par une projection SQL directe en DTO.
 - **Pourquoi :** l'US 5.3 (suivi des réservations) introduit des lectures d'agrégats (comptages, totaux), pour lesquelles charger toutes les réservations en entités serait du gaspillage. Le projet va donc mélanger deux approches de lecture : ce mélange n'est sain que si la règle est écrite, connue et justifiée, et non laissée au choix du moment. L'ADR répond aussi aux questions D2 Q1 et Q4 (bonnes pratiques) : il prouve que les choix d'architecture sont réfléchis et tracés.
+- **Où :** tous les ADR du projet, front et back, sont dans le dépôt de documentation, [`grand-cinema-docs/adr`](https://github.com/Grand-Cinema-Studi/grand-cinema-docs/tree/main/adr), avec une seule numérotation. L'ADR n'est donc pas écrit dans ce dépôt, et il ne porte pas le numéro 0001 (déjà pris par le choix du framework backend) : il prend le **prochain numéro libre** de l'index `adr/README.md`, noté `NNNN` ci-dessous.
 
-Branche de travail :
+Branche de travail, dans le dépôt de documentation :
 
 ```bash
-git switch -c docs/adr-read-side-strategy dev
-mkdir -p docs/adr
+cd ../grand-cinema-docs
+git switch main
+git pull
+git switch -c docs/adr-read-side-strategy
 ```
 
-Créer `docs/adr/0001-read-side-strategy.md` (nom de fichier en anglais, contenu en français) avec les rubriques suivantes, au format de Michael Nygard, le plus répandu :
+Créer `adr/NNNN-read-side-strategy.md` (nom de fichier en anglais, contenu en français) à partir du modèle `adr/template.md` (format de Michael Nygard, le plus répandu), avec ce contenu :
 
 ```markdown
-# ADR 0001 – Stratégie du côté lecture (CQRS)
+# ADR NNNN – Stratégie du côté lecture (CQRS)
 
 - Statut : Accepté
-- Date : <date>
+- Concerne : backend
+- Liens : US 5.3 (issue #21), Pull Request du backend qui l'applique
 
 ## Contexte
 
@@ -3398,20 +3402,26 @@ Créer `docs/adr/0001-read-side-strategy.md` (nom de fichier en anglais, contenu
 
 - Positives : chaque lecture utilise la technique adaptée ; les noms (`ReadRepository` ou `Queries`) indiquent l'approche ; règle connue de tous.
 - Négatives : deux approches à connaître ; les projections exigent des tests d'intégration (base PostgreSQL de test).
+- À surveiller : un écran de lecture simple qui devient lent est le signal de passer du cas 2 au cas 3.
 ```
 
-Règle de vie d'un ADR : une fois accepté, il n'est plus modifié. Si la décision change, on écrit un nouvel ADR (0002, ...) dont le statut indique qu'il **remplace** le 0001, et le statut du 0001 devient « Remplacé par l'ADR 0002 ». L'historique des décisions reste ainsi lisible.
+Dans `adr/README.md` :
+
+- ajouter la ligne `| [NNNN](NNNN-read-side-strategy.md) | Stratégie du côté lecture (CQRS) | Accepté |` au tableau de l'index ;
+- retirer « stratégie du côté lecture (repository ou projection SQL), avant l'US 5.3 » de la liste des décisions à rédiger.
+
+Règle de vie d'un ADR : une fois accepté, il n'est plus modifié. Si la décision change, on écrit un nouvel ADR dont le statut indique qu'il **remplace** celui-ci, et le statut de l'ancien devient « Remplacé par l'ADR <numéro> ». L'historique des décisions reste ainsi lisible.
 
 Enregistrer et intégrer :
 
 ```bash
-git add docs/adr
+git add adr
 git commit -m "docs(adr): add read side strategy decision"
 git push -u origin docs/adr-read-side-strategy
 ```
 
-Ouvrir la Pull Request vers `dev` et la fusionner (voir l'étape 3c).
+Ouvrir la Pull Request vers `main` du dépôt de documentation et la fusionner (voir l'étape 3c). La Pull Request du backend qui développe l'US 5.3 cite cet ADR dans sa description.
 
-- **Vérification :** `docs/adr/0001-read-side-strategy.md` est présent sur `dev` ; l'interface de lecture de l'US 5.3 respecte la règle (nom en `Queries`, rangée dans `Features/Reservations/Queries`). PR : **\_\_**.
+- **Vérification :** `adr/NNNN-read-side-strategy.md` est présent sur `main` du dépôt de documentation et figure dans l'index `adr/README.md` ; l'interface de lecture de l'US 5.3 respecte la règle (nom en `Queries`, rangée dans `Features/Reservations/Queries`). PR : **\_\_**.
 
-_À quoi l'étape a servi : à écrire noir sur blanc la règle qui décide, pour chaque lecture, entre repository et projection SQL, avec les raisons et les alternatives écartées. Pourquoi : un mélange de techniques n'est acceptable que s'il suit une règle connue ; l'ADR évite les choix arbitraires, guide les développements suivants et montre au jury une démarche d'architecture professionnelle et tracée._
+_À quoi l'étape a servi : à écrire noir sur blanc la règle qui décide, pour chaque lecture, entre repository et projection SQL, avec les raisons et les alternatives écartées. Pourquoi : un mélange de techniques n'est acceptable que s'il suit une règle connue ; l'ADR évite les choix arbitraires, guide les développements suivants et montre au jury une démarche d'architecture professionnelle et tracée. Il est rangé avec les autres ADR, dans le dépôt de documentation, pour que toutes les décisions du projet se lisent au même endroit._
