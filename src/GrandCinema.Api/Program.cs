@@ -20,6 +20,6 @@ if (app.Configuration.GetValue<bool>("Swagger:Enabled"))
 app.MapHealthChecks("/health");
 app.MapScheduleEndpoints();
 
-app.MapGet("/", () => "Hello World!");
+app.MapGet("/", () => "Grand Cinema Api");
 
 app.Run();
