@@ -8,7 +8,7 @@ Projet réalisé dans le cadre du Bachelor Développeur d'Application (Studi), B
 |---|---|
 | Dépôt backend (ce dépôt) | https://github.com/Grand-Cinema-Studi/grand-cinema-backend |
 | Dépôt frontend | https://github.com/Grand-Cinema-Studi/grand-cinema-frontend |
-| Dépôt de documentation (Blocs 1, 2, 3, backlog) | https://github.com/Grand-Cinema-Studi/grand-cinema-docs |
+| Dépôt de documentation (architecture, décisions techniques, règles communes, déploiement) | https://github.com/Grand-Cinema-Studi/grand-cinema-docs |
 | Backlog (EPICs, user stories) | https://github.com/orgs/Grand-Cinema-Studi/projects/3 |
 
 ## Stack

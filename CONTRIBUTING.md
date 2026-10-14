@@ -4,3 +4,5 @@
 - nom d'une branche de fonctionnalité = préfixe + numéro de user story + court intitulé (exemple : feature/us-2-3-reserve-places) ;
 - messages de commit au format Conventional Commits (feat, fix, test, docs, chore) ;
 - une branche = une user story = une Pull Request relue avec une checklist.
+
+Détail du workflow (protections des branches, Pull Requests, mode de fusion, messages de commit) : [git-workflow.md](https://github.com/Grand-Cinema-Studi/grand-cinema-docs/blob/main/development/git-workflow.md), dans le dépôt de documentation.
