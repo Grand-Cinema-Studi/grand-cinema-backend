@@ -10,6 +10,7 @@ public static class ScheduleEndpoints
     public static IEndpointRouteBuilder MapScheduleEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/schedule", GetSchedule)
+            .AllowAnonymous()
             .WithName("GetSchedule")
             .WithTags("Schedule")
             .WithSummary("Movies and screenings of a day")
