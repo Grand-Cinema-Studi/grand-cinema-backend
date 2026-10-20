@@ -3,7 +3,9 @@
 Journal pas à pas de la construction du backend, pensé comme un tutoriel : une entrée par action, dans l'ordre, avec les commandes exactes à lancer.
 
 Stack : C# / .NET, Minimal API, Clean Architecture, CQRS, EF Core, PostgreSQL.
-Périmètre MVP : US 1.1, 2.1, 2.2, 2.3, 5.2, 5.3 (issues du Bloc 2).
+Périmètre MVP (Bloc 2) : 11 user stories, 1.1, 1.2, 2.1, 2.2, 2.3, 3.1, 3.2, 4.1, 5.1, 5.2 et 5.3 ; les US 2.4, 5.4 et 5.5 sont en V2.
+
+Architecture et hébergement : ceux du Bloc 1 (Front-end Angular sur S3 + CloudFront, API Back-end sur EC2, PostgreSQL, Stripe, CloudWatch), montés pour le projet dans une version réduite qui sert d'environnement de **recette** au sens du Bloc 2 (voir la phase 1 bis).
 
 Conventions de ce document :
 
@@ -1030,7 +1032,7 @@ Ouvrir la Pull Request vers `dev` avec la checklist : la migration s'applique su
 
 _À quoi l'étape a servi : à traduire le besoin métier (films, séances, places, réservations, utilisateurs) en tables, avec leur script SQL et leur schéma. Pourquoi : c'est le livrable du D1 Q2 ; la contrainte d'unicité sur séance et place est la première défense contre la double vente, qui sera le bug étudié au Dossier 3._
 
-### Étape 7 bis – Suite de l'US 1.1 : ScreeningReadRepository [ ]
+### Étape 7 bis – Suite de l'US 1.1 : ScreeningReadRepository [x] (date et PR à noter)
 
 - **Quoi :** implémenter `IScreeningReadRepository` dans Infrastructure avec EF Core, le vérifier par un test d'intégration sur un vrai PostgreSQL, ajouter l'index sur `StartsAt` qu'exige sa requête, puis l'enregistrer dans l'injection de dépendances.
 - **Pourquoi :** le gestionnaire `GetScheduleHandler` est testé avec une doublure (Moq) ; le filtre par jour, lui, s'exécute en SQL et ne peut être prouvé que contre PostgreSQL (remarque de l'étape 5c). L'index existant `(RoomId, StartsAt)` commence par `RoomId` : PostgreSQL ne peut pas s'en servir pour une recherche sur `StartsAt` seul, toutes salles confondues.
@@ -1285,7 +1287,7 @@ _À quoi l'étape a servi : à brancher le cas d'usage de l'US 1.1 sur la vraie 
 
 Reste de l'US 1.1 : l'endpoint `GET /api/schedule` et Swagger, à l'étape 7 ter.
 
-### Étape 7 ter – Fin de l'US 1.1 : endpoint et Swagger [ ]
+### Étape 7 ter – Fin de l'US 1.1 : endpoint et Swagger [x] (date et PR à noter)
 
 - **Quoi :** enregistrer le gestionnaire de l'US 1.1 dans l'injection de dépendances, exposer l'endpoint `GET /api/schedule`, le documenter avec Swagger, puis l'essayer avec des données de démonstration.
 - **Pourquoi :** jusqu'ici, la logique (gestionnaire) et l'accès aux données (repository) existent et sont testés, mais rien n'est appelable en HTTP. L'endpoint rend l'US 1.1 utilisable par le front Angular ; Swagger donne une documentation interactive de l'API, utile au front, au jury et aux essais manuels.
@@ -2035,7 +2037,7 @@ Ouvrir la Pull Request vers `dev`.
 
 _À quoi l'étape a servi : à ajouter la liste des films à l'affiche en suivant toute la démarche du projet : une règle d'abord écrite dans le backlog, puis un cycle TDD par comportement, un test d'intégration pour la partie SQL, et un endpoint sans logique. Pourquoi : la ressource porte le nom de ce qu'elle renvoie (`/api/movies`), la règle « au moins une séance à venir » est traduite en `EXISTS` par EF Core, ce qui renvoie chaque film une seule fois et laisse PostgreSQL s'arrêter à la première séance trouvée ; l'heure de référence vient du gestionnaire, pour que le fuseau du cinéma ne soit géré qu'à un seul endroit._
 
-### Étape 8 – Livrer la phase [ ]
+### Étape 8 – Livrer la phase [x] (date et PR à noter)
 
 - **Quoi :** ouvrir une Pull Request vers dev pour chaque branche de la phase, fusionner une fois la compilation passée, puis nettoyer. Relire ce fichier : numéroté, daté.
 - **Pourquoi :** montrer au jury une intégration continue d'un incrément fini, tracée de bout en bout.
@@ -2066,20 +2068,24 @@ _À quoi l'étape a servi : à intégrer proprement le travail de la phase dans 
 
 ## Phase 1 bis – Mise en ligne sur AWS
 
-Architecture cible :
+Architecture cible (Bloc 1) :
 
 ```text
-Internet ── HTTP 80 ──► EC2 (Amazon Linux 2023 + Docker)
-                         conteneur grandcinema-api (port 8080)
-                               │ PostgreSQL 5432, autorisé pour ce seul serveur
-                               ▼
-                         RDS PostgreSQL 16 (privée, sans accès Internet)
+Navigateur ── HTTPS ──► CloudFront (CDN)
+                          ├─ fichiers du front ──► S3 (hébergement statique) : Front-end Angular (dépôt grand-cinema-frontend)
+                          └─ /api/* ──► EC2 + Auto Scaling : API Back-end (conteneur grandcinema-api, port 8080)
+                                          ├─► RDS PostgreSQL 16 (privée, sans accès Internet)
+                                          ├─► S3 (billets et QR codes, US 3.2)
+                                          └─► Stripe (paiement, US 3.1)
 
-ECR                    registre privé des images Docker de l'API
-SSM Parameter Store    chaîne de connexion chiffrée, lue par le serveur au déploiement
+CloudWatch             supervision : métriques, journaux, alertes
+SSM Parameter Store    secrets chiffrés, lus par le serveur au déploiement
 SSM Session Manager    accès au serveur depuis la console AWS, sans SSH ni port ouvert
-GitHub Actions         tests, construction de l'image et déploiement à chaque fusion dans main
+GitHub Actions         CI à chaque Pull Request ; recette déployée à chaque fusion dans dev ;
+                       mise en production manuelle, après validation du Product Owner (Bloc 2)
 ```
+
+Ce journal construit la partie back-end : l'image de l'API, le serveur, la base et la distribution CloudFront placée devant l'API. Le front (compilation Angular, bucket S3, comportement par défaut de CloudFront) se construit dans le journal du dépôt `grand-cinema-frontend` : le front et le back se livrent séparément, chacun avec son pipeline (Bloc 2).
 
 Choix : l'API tourne dans un conteneur Docker sur une machine EC2, la base dans RDS (service PostgreSQL géré : sauvegardes, mises à jour mineures). Docker garantit que l'image essayée en local est exactement celle qui tourne sur AWS ; EC2 laisse voir et comprendre chaque brique (serveur, réseau, droits), ce que masquerait un service plus intégré comme Elastic Beanstalk ou ECS. Le déploiement est d'abord fait à la main (étape 10) pour comprendre chaque geste, puis automatisé (étape 11).
 
@@ -2091,12 +2097,16 @@ Région : **eu-west-3 (Paris)**, proche des utilisateurs et dans l'Union europé
 |---|---|---|
 | Compte AWS | offre gratuite ou payant | **Free plan** : jamais facturé, crédits pendant 6 mois |
 | Base | RDS PostgreSQL (gérée par AWS) | PostgreSQL en conteneur sur le serveur |
-| Front | hors périmètre | conteneur sur le même serveur |
+| Front | S3 + CloudFront (journal du front) | S3 + CloudFront (journal du front), comme la cible |
+| HTTPS | répartiteur de charge et certificat | CloudFront (adresse `*.cloudfront.net`) ; HTTP entre CloudFront et le serveur |
+| Environnement (Bloc 2) | production : déploiement manuel après validation du Product Owner | **recette** : déployée automatiquement à chaque fusion dans `dev` |
 | Images | ECR (500 Mo gratuits au plus) | GitHub Container Registry (gratuit, images publiques) |
 | Coût | payant dès la fin de l'offre gratuite | nul tant que dure le Free plan |
 | Sauvegardes | automatiques (RDS) | `pg_dump` planifié, à organiser |
 
 Le chemin B est retenu pour respecter un budget nul. Le chemin A reste décrit : c'est l'architecture cible du Bloc 1, et l'image Docker permet d'y passer sans changer le code.
+
+Le chemin B monte l'environnement de **recette** du Bloc 2 : c'est l'adresse donnée au jury. C'est une version réduite de la cible, et les écarts sont assumés par écrit : un seul serveur sans Auto Scaling, PostgreSQL en conteneur au lieu de RDS, HTTP entre CloudFront et le serveur. Le front, lui, est déployé comme dans la cible (S3 + CloudFront).
 
 ### Étape 9 – Image Docker de l'API [ ]
 
@@ -2456,7 +2466,7 @@ curl -fsSL https://raw.githubusercontent.com/Grand-Cinema-Studi/grand-cinema-bac
 #### Étape 10j – Coûts et limites
 
 - **Coûts.** Ressources facturées hors offre gratuite : l'instance EC2, l'instance et le stockage RDS, l'adresse IPv4 publique. Hors périodes de travail, arrêter l'instance EC2 et la base RDS (une base RDS arrêtée redémarre seule au bout de sept jours). À la fin du projet : supprimer l'instance, la base, l'Elastic IP, le registre ECR et les paramètres.
-- **HTTP seulement.** L'API répond en HTTP, sans chiffrement entre le navigateur et le serveur : suffisant pour une démonstration, insuffisant pour une vraie mise en production avec authentification. Évolution : un nom de domaine et un certificat (équilibreur de charge AWS avec certificat ACM, ou proxy Caddy avec Let's Encrypt sur le serveur), à prévoir avant l'authentification (US 2.1) et avant de brancher le front Angular.
+- **HTTP seulement** (sans CloudFront devant ; la distribution de l'étape 10 G i s'applique aussi à ce chemin). L'API répond en HTTP, sans chiffrement entre le navigateur et le serveur : suffisant pour une démonstration, insuffisant pour une vraie mise en production avec authentification. Évolution : un nom de domaine et un certificat (équilibreur de charge AWS avec certificat ACM, ou proxy Caddy avec Let's Encrypt sur le serveur), à prévoir avant l'authentification (US 2.1) et avant de brancher le front Angular.
 - **Un seul serveur.** Pas de haute disponibilité : si l'instance tombe, l'API est indisponible le temps de la relancer. Cohérent avec le volume d'un cinéma indépendant ; l'image Docker permettrait de passer plus tard sur plusieurs instances ou sur ECS sans changer le code.
 
 ```bash
@@ -2473,7 +2483,7 @@ _À quoi l'étape a servi : à mettre l'API en ligne sur AWS en comprenant chaqu
 
 ### Étape 11 – Intégration et déploiement continus (GitHub Actions) [ ]
 
-- **Quoi :** un workflow d'intégration continue (CI) qui compile et teste chaque Pull Request, et un workflow de déploiement continu (CD) qui, à chaque fusion dans `main`, teste, construit l'image, la pousse dans ECR et la déploie sur EC2 avec le script de l'étape 10.
+- **Quoi :** un workflow d'intégration continue (CI) qui, sur chaque Pull Request, compile, vérifie le formatage, teste, mesure la couverture et lance l'analyse SonarCloud (Quality Gate bloquant, comme l'exige le Bloc 2), et un workflow de déploiement (CD) qui, à chaque fusion dans `main` **approuvée par le Product Owner** (mise en production manuelle du Bloc 2), teste, construit l'image, la pousse dans ECR et la déploie sur EC2 avec le script de l'étape 10.
 - **Pourquoi :** plus aucun déploiement à la main, donc plus d'oubli ni de version construite sur un poste mal configuré ; une Pull Request dont les tests échouent ne peut plus être fusionnée ; chaque déploiement est tracé dans l'onglet Actions de GitHub.
 
 ```bash
@@ -2501,19 +2511,85 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # SonarCloud compares with the history to find the new code
 
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
 
+      - uses: actions/setup-java@v4 # the SonarScanner for .NET needs Java 17 or later
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - run: dotnet tool install --global dotnet-sonarscanner
+
+      - name: Begin the SonarCloud analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: >
+          dotnet sonarscanner begin
+          /k:"<clé-du-projet>"
+          /o:"<organisation-sonarcloud>"
+          /d:sonar.host.url="https://sonarcloud.io"
+          /d:sonar.token="$SONAR_TOKEN"
+          /d:sonar.qualitygate.wait=true
+          /d:sonar.cs.opencover.reportsPaths="tests/**/TestResults/**/coverage.opencover.xml"
+          /d:sonar.exclusions="**/Migrations/**"
+          /d:sonar.coverage.exclusions="**/Program.cs,**/Migrations/**,**/Persistence/Configurations/**,**/DependencyInjection.cs"
+
       - run: dotnet restore
+      - run: dotnet format --verify-no-changes --no-restore
       - run: dotnet build --no-restore --configuration Release
-      - run: dotnet test --no-build --configuration Release
+      - run: dotnet test --no-build --configuration Release --collect:"XPlat Code Coverage;Format=opencover"
+
+      - name: End the SonarCloud analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"
 ```
 
 - `global-json-file` : GitHub installe la version du SDK figée dans `global.json` à l'étape 1, la même que sur les postes.
-- Les machines `ubuntu-latest` de GitHub disposent de Docker : le test d'intégration Testcontainers y tourne comme en local.
+- Les machines `ubuntu-latest` de GitHub disposent de Docker : les tests d'intégration Testcontainers y tournent comme en local.
+- **Ce que vérifie la CI, comme l'annonce la stratégie de tests du Bloc 2** : compilation, formatage (`dotnet format`), tests unitaires et d'intégration, couverture (Coverlet, au format OpenCover que lit SonarCloud), analyse SonarCloud.
+- **`sonar.qualitygate.wait=true`** : l'étape de fin attend le verdict du Quality Gate et échoue s'il est rouge. Le contrôle `build-and-test` devient donc rouge, et la fusion est bloquée par le ruleset (étape 11e) : c'est le critère « Quality Gate SonarCloud validé » de la Definition of Done.
+- **Exclusions** : les migrations générées ne sont pas analysées ; le code sans logique (`Program.cs`, configurations EF Core, enregistrement des dépendances) n'est pas compté dans la couverture. L'objectif d'au moins 80 % porte sur le code métier (Bloc 2).
+- Si `dotnet format --verify-no-changes` échoue au premier passage, lancer `dotnet format` sur le poste et committer le résultat.
 - Si GitHub signale une version plus récente d'une action (`@v4`, ...), mettre à jour le numéro.
+
+#### Étape 11a bis – SonarCloud
+
+SonarCloud est la version hébergée de SonarQube, gratuite pour un dépôt public. Sa mise en place est décrite dans `grand-cinema-docs/quality/code-quality.md`.
+
+1. Se connecter à sonarcloud.io avec GitHub, importer l'organisation `Grand-Cinema-Studi`, puis le dépôt `grand-cinema-backend`.
+2. Projet → Administration → Analysis Method : **désactiver l'analyse automatique** (elle ne prend pas en charge le C# ; l'analyse passe par la CI).
+3. Relever la clé du projet et celle de l'organisation (Information du projet) et les reporter dans `ci.yml` à la place de `<clé-du-projet>` et `<organisation-sonarcloud>`.
+4. My Account → Security → générer un jeton, l'enregistrer dans GitHub comme **secret** du dépôt `SONAR_TOKEN` (Settings → Secrets and variables → Actions → Secrets). Jamais dans le code.
+5. Quality Gate : garder « Sonar way » (nouveau code : couverture d'au moins 80 %, au plus 3 % de duplication, notes A, points sensibles examinés).
+
+À la première analyse, tout le code est du « nouveau code » : si le gate échoue sur la couverture, ajouter des tests d'endpoints (`WebApplicationFactory`) plutôt que d'élargir les exclusions. Chaque problème relevé et sa correction sont consignés dans `code-quality.md` (règle, fichier, problème, correction, Pull Request) : c'est la preuve demandée au Dossier 3, Question 1 du Bloc 3.
+
+#### Étape 11a ter – Dependabot
+
+Le Bloc 2 cite les alertes Dependabot dans la stratégie de sécurité. `.github/dependabot.yml` :
+
+```yaml
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: "/"
+    schedule:
+      interval: weekly
+    target-branch: dev
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    target-branch: dev
+```
+
+Puis Settings → Code security : activer **Dependabot alerts** et **Dependabot security updates**. Dependabot ouvre une Pull Request vers `dev` quand une bibliothèque a une mise à jour ou une faille connue ; elle passe par la CI comme les autres.
 
 #### Étape 11b – Accès de GitHub à AWS sans clé (OIDC)
 
@@ -2535,7 +2611,7 @@ GitHub Actions s'authentifie auprès d'AWS par OpenID Connect : à chaque exécu
       "Condition": {
         "StringEquals": {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-          "token.actions.githubusercontent.com:sub": "repo:Grand-Cinema-Studi/grand-cinema-backend:ref:refs/heads/main"
+          "token.actions.githubusercontent.com:sub": "repo:Grand-Cinema-Studi/grand-cinema-backend:environment:production"
         }
       }
     }
@@ -2543,7 +2619,7 @@ GitHub Actions s'authentifie auprès d'AWS par OpenID Connect : à chaque exécu
 }
 ```
 
-La condition `sub` limite le rôle aux workflows **de ce dépôt** exécutés **sur la branche `main`** : une Pull Request ou une autre branche ne peut pas déployer.
+La condition `sub` limite le rôle aux jobs **de ce dépôt** rattachés à l'**environnement GitHub `production`** (étape 11e) : seul un déploiement approuvé dans cet environnement obtient des identifiants ; une Pull Request ou une autre branche ne peut pas déployer. Quand un job déclare un environnement, GitHub écrit `environment:<nom>` dans le jeton, à la place de la branche.
 
 3. Ajouter au rôle une politique en ligne `deploy-grandcinema` :
 
@@ -2637,6 +2713,7 @@ jobs:
   deploy:
     needs: test
     runs-on: ubuntu-latest
+    environment: production # waits for the Product Owner's approval (step 11e)
     steps:
       - uses: actions/checkout@v4
 
@@ -2676,7 +2753,7 @@ jobs:
 
 Ce que fait le workflow :
 
-- **déclenchement** : à chaque push sur `main`, c'est-à-dire à chaque fusion de la Pull Request `dev` → `main` ; `workflow_dispatch` ajoute un bouton « Run workflow » pour relancer un déploiement à la main ;
+- **déclenchement** : à chaque push sur `main`, c'est-à-dire à chaque fusion de la Pull Request `dev` → `main` ; le job `deploy` attend ensuite **l'approbation du Product Owner** (environnement `production`) : c'est la mise en production manuelle décidée au Bloc 2, après vérification des critères du guide de déploiement ; `workflow_dispatch` ajoute un bouton « Run workflow » pour relancer un déploiement à la main ;
 - **`permissions: id-token: write`** : autorise le workflow à demander le jeton OIDC de l'étape 11b ;
 - **`concurrency`** : deux déploiements ne se chevauchent jamais, le second attend la fin du premier ;
 - **`test` puis `deploy`** (`needs: test`) : rien n'est déployé si un test échoue ;
@@ -2696,34 +2773,37 @@ git push -u origin chore/ci-cd
 
 1. Ouvrir la Pull Request vers `dev` : le workflow **CI** se lance sur la Pull Request (onglet Checks). Fusionner quand il est vert.
 2. Exiger la CI avant toute fusion : Settings → Rules → Rulesets → `protect-main-and-dev` → cocher **Require status checks to pass**, ajouter le contrôle `build-and-test`, enregistrer (c'est le point laissé en attente à l'étape 3b).
-3. Ouvrir la Pull Request `dev` → `main` (mise en production), attendre la CI, fusionner : le workflow **Deploy** se lance (onglet Actions).
-4. Vérifier `http://<elastic-ip>/health`, et dans la console ECR, la nouvelle image étiquetée avec le commit de fusion.
+3. Créer l'environnement de production : Settings → Environments → New environment `production` → **Required reviewers** : le Product Owner (ici, soi-même) ; **Deployment branches** : `main` seulement.
+4. Ouvrir la Pull Request `dev` → `main` (mise en production, quand les critères du guide de déploiement sont remplis), attendre la CI, fusionner : le workflow **Deploy** se lance, puis attend l'approbation (onglet Actions → Review deployments).
+5. Vérifier `http://<elastic-ip>/health`, et dans la console ECR, la nouvelle image étiquetée avec le commit de fusion.
 
-- **Vérification :** une Pull Request lance la CI et ne peut être fusionnée que verte ; une fusion dans `main` déploie automatiquement ; l'onglet Actions montre l'historique des déploiements. PR : **\_\_**.
+- **Vérification :** une Pull Request lance la CI et ne peut être fusionnée que verte ; une fusion dans `main` est déployée après approbation du Product Owner ; l'onglet Actions montre l'historique des déploiements. PR : **\_\_**.
 
-_À quoi l'étape a servi : à automatiser tout le chemin du code jusqu'à la production : chaque Pull Request est compilée et testée, chaque fusion dans `main` est testée, empaquetée, déployée et vérifiée. Pourquoi : le déploiement devient un non-événement, reproductible et tracé ; l'accès de GitHub à AWS passe par des identifiants temporaires limités à ce dépôt et à `main`, sans aucune clé stockée ; la protection de branche garantit qu'aucun code non testé n'atteint `dev` ni `main`._
+_À quoi l'étape a servi : à automatiser tout le chemin du code jusqu'à la production : chaque Pull Request est compilée et testée, chaque fusion dans `main` est testée, empaquetée, puis déployée et vérifiée après approbation du Product Owner. Pourquoi : le déploiement devient un non-événement, reproductible et tracé ; l'accès de GitHub à AWS passe par des identifiants temporaires limités à ce dépôt et à l'environnement `production`, sans aucune clé stockée ; la protection de branche garantit qu'aucun code non testé n'atteint `dev` ni `main`._
 
 ### Étape 10 G – Variante gratuite : tout en Docker sur un serveur Free plan [ ]
 
-- **Quoi :** déployer toute l'application (base PostgreSQL, API, front Angular) en conteneurs Docker sur **un seul** serveur EC2, avec un compte AWS **Free plan**, et des images publiées gratuitement dans GitHub Container Registry. Remplace les étapes 10 et 11 (chemin A).
-- **Pourquoi :** contrainte de budget nul. Un compte Free plan ne peut pas être facturé, et un seul petit serveur consomme le moins possible des crédits offerts. Docker Compose décrit toute l'application dans un fichier : la même description tourne en local et sur AWS.
+- **Quoi :** monter l'environnement de **recette** du Bloc 2 : l'API et sa base PostgreSQL en conteneurs Docker sur **un seul** serveur EC2, avec un compte AWS **Free plan**, une image publiée gratuitement dans GitHub Container Registry, et une distribution **CloudFront** devant le serveur pour le HTTPS (étape 10 G i). Le front Angular est publié sur S3 derrière la même distribution, depuis son propre dépôt. Remplace les étapes 10 et 11 (chemin A).
+- **Pourquoi :** contrainte de budget nul. Un compte Free plan ne peut pas être facturé, et un seul petit serveur consomme le moins possible des crédits offerts. Docker Compose décrit l'API, sa migration et sa base dans un fichier : la même description tourne en local et sur AWS.
 
 Architecture :
 
 ```text
-Internet ── HTTP 80 ──► EC2 t3.micro (Amazon Linux 2023 + Docker Compose)
-                         proxy (Caddy, seul port ouvert : 80)
-                           ├─ /api/*, /health, /swagger, /openapi/* ──► api (image du back)
-                           └─ tout le reste                         ──► front (image du front Angular)
-                         migrate (bundle de migrations : s'exécute, puis s'arrête)
-                         db (PostgreSQL 16, volume Docker, aucun port publié)
+Navigateur ── HTTPS ──► CloudFront (adresse *.cloudfront.net)
+                          ├─ /api/*, /health, /swagger*, /openapi/* ──► EC2, HTTP 80 (étape 10 G i)
+                          └─ tout le reste ──► S3 : fichiers du front Angular (journal du front)
 
-GitHub Container Registry   images publiques du back et du front (gratuit)
-SSM Parameter Store         mot de passe PostgreSQL chiffré et réglages (gratuit)
+EC2 t3.micro (Amazon Linux 2023 + Docker Compose), port 80 ouvert à CloudFront seulement
+   api      image du back (port 8080, publié sur le port 80 du serveur)
+   migrate  bundle de migrations : s'exécute, puis s'arrête
+   db       PostgreSQL 16, volume Docker, aucun port publié
+
+GitHub Container Registry   image publique du back (gratuit)
+SSM Parameter Store         secrets (mot de passe PostgreSQL, clé des jetons) et réglages, chiffrés (gratuit)
 SSM Session Manager         accès au serveur sans SSH (gratuit)
 ```
 
-Le front et l'API sont servis par la **même adresse** : le navigateur appelle `/api/...` sur le site qu'il affiche, donc pas de configuration CORS à prévoir.
+Le front et l'API sont servis par la **même adresse**, celle de CloudFront : le navigateur appelle `/api/...` sur le site qu'il affiche, donc pas de configuration CORS à prévoir. Le serveur n'accepte que les requêtes venant de CloudFront (étape 10 G i).
 
 ```bash
 git switch dev
@@ -2738,8 +2818,9 @@ git switch -c chore/aws-free-deployment dev
 3. Activer l'authentification à deux facteurs (MFA) sur le compte racine, puis créer un accès personnel d'administration (IAM Identity Center) et l'utiliser pour la suite.
 4. Choisir la région **eu-west-3 (Paris)** pour toutes les ressources.
 5. Créer un budget (Billing and Cost Management → Budgets → **Zero spend budget**) pour être alerté de toute consommation hors crédits. Suivre ensuite les crédits restants dans Billing and Cost Management → Credits.
+6. Vérifier que CloudFront est proposé au compte (console CloudFront → Create distribution) : c'est lui qui apporte le HTTPS et sert le front, comme au Bloc 1. À défaut, appliquer le repli décrit dans `grand-cinema-docs/deployment/environments.md` et le signaler dans la copie.
 
-Estimation de la consommation, tarifs de Paris (à vérifier avec AWS Pricing Calculator) : instance `t3.micro` environ 9 $ par mois, adresse IPv4 publique environ 3,60 $, disque de 16 Gio environ 1,50 $, soit **environ 14 $ par mois**, environ 85 $ sur 6 mois : couvert par les crédits. Un `t3.small` doublerait le coût de l'instance : inutile, toute l'application occupe moins de 200 Mio de mémoire.
+Estimation de la consommation, tarifs de Paris (à vérifier avec AWS Pricing Calculator) : instance `t3.micro` environ 9 $ par mois, adresse IPv4 publique environ 3,60 $, disque de 16 Gio environ 1,50 $, soit **environ 14 $ par mois**, environ 85 $ sur 6 mois : couvert par les crédits. CloudFront relève de son offre gratuite permanente (de l'ordre de 1 To de transfert et 10 millions de requêtes par mois : à vérifier sur la page de tarifs). Un `t3.small` doublerait le coût de l'instance : inutile, l'API et la base occupent moins de 200 Mio de mémoire.
 
 L'AWS CLI n'est pas nécessaire sur le poste pour cette variante : tout se fait dans la console, et les images passent par GitHub.
 
@@ -2757,13 +2838,7 @@ GitHub rattache ainsi le paquet au dépôt, ce qui permettra au workflow de l'é
 
 Nom de l'image du back : `ghcr.io/grand-cinema-studi/grand-cinema-backend:<commit>` (tout en minuscules, obligatoire pour un nom d'image).
 
-**Contrat de l'image du front**, construite dans le dépôt du front (Angular compilé, servi par nginx) :
-
-- elle écoute sur le port 80 ;
-- elle renvoie `index.html` pour toute route inconnue (navigation Angular) ;
-- elle appelle l'API par des adresses relatives (`/api/schedule`), sans nom de serveur.
-
-Tant que cette image n'existe pas, l'image `nginx:alpine` (page d'accueil nginx) tient sa place.
+**Le front n'est pas une image Docker** : Angular compilé est un ensemble de fichiers statiques, publiés sur S3 et diffusés par CloudFront, comme au Bloc 1 (journal du dépôt `grand-cinema-frontend`). Il appelle l'API par des adresses relatives (`/api/schedule`), sans nom de serveur : CloudFront oriente ces chemins vers l'API.
 
 #### Étape 10 G c – Secrets et réglages dans Parameter Store
 
@@ -2779,15 +2854,15 @@ Console Systems Manager → Parameter Store → Create parameter (niveau Standar
 
 | Nom | Type | Valeur |
 |---|---|---|
-| `/grandcinema/prod/postgres-password` | **SecureString** | le mot de passe généré |
-| `/grandcinema/prod/swagger-enabled` | String | `false` |
-| `/grandcinema/prod/front-image` | String | `nginx:alpine` (plus tard : `ghcr.io/grand-cinema-studi/grand-cinema-frontend:latest`) |
+| `/grandcinema/recette/postgres-password` | **SecureString** | le mot de passe généré |
+| `/grandcinema/recette/jwt-signing-key` | **SecureString** | clé de signature des jetons (`openssl rand -base64 48`) |
+| `/grandcinema/recette/swagger-enabled` | String | `false` |
 
-Le mot de passe n'est écrit nulle part ailleurs : ni dans le dépôt, ni dans une image, ni dans GitHub. Les deux autres paramètres changent le comportement en production sans modifier le code.
+Les secrets (mot de passe de la base, clé de signature des jetons) ne sont écrits nulle part ailleurs : ni dans le dépôt, ni dans une image, ni dans GitHub. Le réglage de Swagger change le comportement de la recette sans modifier le code.
 
 #### Étape 10 G d – Serveur EC2
 
-**Groupe de sécurité.** Console EC2 → Security Groups → Create security group `grandcinema-sg`, dans le VPC par défaut, avec une seule règle entrante : HTTP, port 80, source `0.0.0.0/0`. Pas de port 22 (SSH), pas de port 5432 (PostgreSQL) : la base n'est joignable que par les conteneurs du serveur.
+**Groupe de sécurité.** Console EC2 → Security Groups → Create security group `grandcinema-sg`, dans le VPC par défaut, avec une seule règle entrante : HTTP, port 80, source `0.0.0.0/0` le temps des premiers essais (elle sera réservée à CloudFront à l'étape 10 G i). Pas de port 22 (SSH), pas de port 5432 (PostgreSQL) : la base n'est joignable que par les conteneurs du serveur.
 
 **Rôle IAM du serveur.** IAM → Roles → Create role → AWS service, cas d'usage **EC2** :
 
@@ -2802,7 +2877,7 @@ Le mot de passe n'est écrit nulle part ailleurs : ni dans le dépôt, ni dans u
     {
       "Effect": "Allow",
       "Action": "ssm:GetParameter",
-      "Resource": "arn:aws:ssm:eu-west-3:<compte>:parameter/grandcinema/prod/*"
+      "Resource": "arn:aws:ssm:eu-west-3:<compte>:parameter/grandcinema/recette/*"
     }
   ]
 }
@@ -2838,7 +2913,7 @@ echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
 - `cronie` : planificateur de tâches, pour les sauvegardes (étape 10 G h) ;
 - 2 Gio de mémoire d'échange (swap) : filet de sécurité pour un serveur de 1 Gio de mémoire, pendant le téléchargement des images ou un pic de charge.
 
-**Adresse IP fixe.** EC2 → Elastic IPs → Allocate, puis Associate à l'instance `grandcinema`. L'adresse ne change plus aux redémarrages : c'est l'adresse donnée au jury et à GitHub Actions. Une adresse IPv4 publique est décomptée des crédits, qu'elle soit fixe ou non.
+**Adresse IP fixe.** EC2 → Elastic IPs → Allocate, puis Associate à l'instance `grandcinema`. L'adresse ne change plus aux redémarrages : CloudFront s'y adresse (étape 10 G i), par le nom DNS public qui lui correspond. Une adresse IPv4 publique est décomptée des crédits, qu'elle soit fixe ou non.
 
 **Vérifier.** EC2 → instance → Connect → **Session Manager** → Connect (quelques minutes après le premier démarrage) :
 
@@ -2850,7 +2925,7 @@ free -h
 
 #### Étape 10 G e – Fichiers de déploiement
 
-Trois fichiers, versionnés dans `deploy/`.
+Deux fichiers, versionnés dans `deploy/`.
 
 `deploy/docker-compose.prod.yml` :
 
@@ -2885,62 +2960,32 @@ services:
     restart: unless-stopped
     environment:
       ConnectionStrings__Default: Host=db;Port=5432;Database=grandcinema;Username=grandcinema;Password=${POSTGRES_PASSWORD}
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:?}
       Swagger__Enabled: ${SWAGGER_ENABLED:-false}
       TZ: Europe/Paris
+    ports:
+      - "80:8080"
     depends_on:
       migrate:
         condition: service_completed_successfully
 
-  front:
-    image: ${FRONT_IMAGE:?}
-    restart: unless-stopped
-
-  proxy:
-    image: caddy:2
-    restart: unless-stopped
-    ports:
-      - "80:80"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-    depends_on:
-      - api
-      - front
-
 volumes:
   db-data:
-  caddy-data:
 ```
 
 - **`db`** : aucun `ports:`, donc PostgreSQL n'est joignable que par les autres conteneurs (sous le nom `db`), jamais depuis Internet. Les données vivent dans le volume `db-data` et survivent aux redéploiements.
 - **`migrate`** : la même image que l'API, lancée sur le bundle de migrations. Il attend que la base soit prête (`service_healthy`), applique les migrations, puis s'arrête.
 - **`api`** : ne démarre que si `migrate` a réussi (`service_completed_successfully`). Si une migration échoue, la nouvelle version de l'API ne démarre pas.
-- **`front`** et **`proxy`** : le proxy Caddy est le seul conteneur exposé ; il oriente chaque requête vers l'API ou le front.
+- **`api`** publie son port 8080 sur le port 80 du serveur : c'est le seul port ouvert, et seul CloudFront peut l'atteindre (étape 10 G i). Le front n'est pas sur ce serveur : il est sur S3.
+- **`Jwt__SigningKey`** : clé de signature des jetons de l'US 2.1, lue dans Parameter Store comme le mot de passe.
 - **`${VARIABLE:?}`** : Compose refuse de démarrer si la variable manque, plutôt que de lancer une base sans mot de passe.
 - `restart: unless-stopped` : les conteneurs redémarrent après un plantage ou un redémarrage du serveur.
-
-`deploy/Caddyfile` :
-
-```text
-:80 {
-	@api path /api/* /health /swagger /swagger/* /openapi/*
-	handle @api {
-		reverse_proxy api:8080
-	}
-
-	handle {
-		reverse_proxy front:80
-	}
-}
-```
-
-Caddy écoute sur le port 80 ; les chemins de l'API vont au conteneur `api` (port 8080), tout le reste au front. Le fichier Caddy exige une indentation par tabulations.
 
 `deploy/deploy.sh` :
 
 ```bash
 #!/usr/bin/env bash
-# Deploys the whole application on the EC2 instance with Docker Compose.
+# Deploys the API and its database on the EC2 instance with Docker Compose.
 # Usage: deploy.sh <commit-sha>
 # The image ghcr.io/grand-cinema-studi/grand-cinema-backend:<commit-sha> must have been pushed.
 set -euo pipefail
@@ -2951,20 +2996,19 @@ APP_DIR="/opt/grandcinema"
 RAW_URL="https://raw.githubusercontent.com/Grand-Cinema-Studi/grand-cinema-backend/$COMMIT/deploy"
 
 parameter() {
-    aws ssm get-parameter --region "$REGION" --name "/grandcinema/prod/$1" --with-decryption --query Parameter.Value --output text
+    aws ssm get-parameter --region "$REGION" --name "/grandcinema/recette/$1" --with-decryption --query Parameter.Value --output text
 }
 
 mkdir -p "$APP_DIR"
 cd "$APP_DIR"
 
 curl -fsSL "$RAW_URL/docker-compose.prod.yml" -o docker-compose.yml
-curl -fsSL "$RAW_URL/Caddyfile" -o Caddyfile
 
 umask 077
 cat > .env <<EOF
 POSTGRES_PASSWORD=$(parameter postgres-password)
 SWAGGER_ENABLED=$(parameter swagger-enabled)
-FRONT_IMAGE=$(parameter front-image)
+JWT_SIGNING_KEY=$(parameter jwt-signing-key)
 API_IMAGE=ghcr.io/grand-cinema-studi/grand-cinema-backend:$COMMIT
 EOF
 
@@ -2991,9 +3035,9 @@ chmod +x deploy/deploy.sh
 
 Ce que fait le script :
 
-1. télécharge le fichier Compose et le Caddyfile **du commit déployé** (le dépôt est public) : le serveur n'a jamais de version périmée de ces fichiers, et rien n'est à recopier à la main ;
+1. télécharge le fichier Compose **du commit déployé** (le dépôt est public) : le serveur n'a jamais de version périmée de ces fichiers, et rien n'est à recopier à la main ;
 2. lit les paramètres dans Parameter Store (grâce au rôle du serveur) et écrit `/opt/grandcinema/.env`, lisible par `root` seul (`umask 077`) ;
-3. `docker compose pull` télécharge les images, `up -d` ne recrée que les conteneurs dont l'image a changé (en général `migrate` et `api`) : la base, le front et le proxy continuent de tourner ;
+3. `docker compose pull` télécharge les images, `up -d` ne recrée que les conteneurs dont l'image a changé (en général `migrate` et `api`) : la base continue de tourner ;
 4. supprime les images devenues inutiles, pour ne pas remplir le disque ;
 5. attend que `/health` réponde, sinon affiche les journaux de `migrate` et `api`, et échoue.
 
@@ -3048,7 +3092,7 @@ curl http://<elastic-ip>/health
 curl http://<elastic-ip>/api/schedule
 ```
 
-Résultats attendus : `Healthy`, puis `{"date":"<date du jour à Paris>","movies":[]}`. `http://<elastic-ip>/` affiche la page du front (pour l'instant, la page d'accueil nginx).
+Résultats attendus : `Healthy`, puis `{"date":"<date du jour à Paris>","movies":[]}`.
 
 **Données de démonstration** (terminal Session Manager) :
 
@@ -3058,9 +3102,9 @@ cd /opt/grandcinema
 sudo docker compose exec -T db psql -U grandcinema -d grandcinema < /tmp/seed-dev.sql
 ```
 
-**Swagger pour le jury.** Passer `/grandcinema/prod/swagger-enabled` à `true`, relancer `sudo bash /tmp/deploy.sh <commit>` (même commit : seule l'API redémarre), ouvrir `http://<elastic-ip>/swagger`. Remettre `false` et relancer après la démonstration.
+**Swagger pour le jury.** Passer `/grandcinema/recette/swagger-enabled` à `true`, relancer `sudo bash /tmp/deploy.sh <commit>` (même commit : seule l'API redémarre), ouvrir `https://<distribution>.cloudfront.net/swagger` (après l'étape 10 G i). Remettre `false` et relancer après la démonstration.
 
-**Brancher le front**, quand son image existe : passer `/grandcinema/prod/front-image` à `ghcr.io/grand-cinema-studi/grand-cinema-frontend:latest` et relancer le déploiement.
+**Le front** se publie depuis son propre dépôt (journal du front) : fichiers sur S3, puis comportement par défaut de la distribution créée à l'étape 10 G i.
 
 **Revenir à une version précédente.** Relancer le script avec un commit antérieur dont l'image existe (liste dans les Packages GitHub) : `sudo bash /tmp/deploy.sh <ancien-commit>`, après avoir téléchargé le script de ce commit. Les migrations ne sont jamais annulées : une migration doit rester compatible avec la version précédente de l'API.
 
@@ -3083,22 +3127,61 @@ ls -lh /opt/grandcinema/backups
 
 Ces sauvegardes sont sur le disque du serveur : elles protègent d'une erreur de manipulation, pas de la perte du serveur. **Avant la fin du Free plan**, récupérer la dernière sauvegarde (par exemple en l'affichant dans le terminal Session Manager avec `zcat`, ou en la déposant temporairement dans un stockage) ; les images, elles, restent sur GitHub, indépendamment d'AWS.
 
+#### Étape 10 G i – CloudFront devant le serveur (HTTPS, une seule adresse)
+
+CloudFront est le CDN du Bloc 1. Il apporte le HTTPS sans nom de domaine (adresse `https://<distribution>.cloudfront.net`) et devient l'unique adresse de l'application : les chemins de l'API vont au serveur, tout le reste ira aux fichiers du front sur S3 (journal du front).
+
+1. **Nom DNS public du serveur** : EC2 → instance `grandcinema` → **Public IPv4 DNS** (`ec2-<ip>.eu-west-3.compute.amazonaws.com`). CloudFront exige un nom, pas une adresse IP ; ce nom suit l'Elastic IP.
+2. **Créer la distribution** : CloudFront → Create distribution :
+   - origine : ce nom DNS, protocole **HTTP only**, port 80, nom `api` ;
+   - comportement par défaut (provisoire, jusqu'à la publication du front) : origine `api` ;
+   - **Viewer protocol policy** : Redirect HTTP to HTTPS ;
+   - **Allowed HTTP methods** : GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE ;
+   - **Cache policy** : `CachingDisabled` (les réponses de l'API ne sont jamais mises en cache) ;
+   - **Origin request policy** : `AllViewerExceptHostHeader` (transmet l'en-tête `Authorization`, la chaîne de requête et les cookies) ;
+   - pas de pare-feu WAF (payant) ; classe de prix : Europe et Amérique du Nord.
+3. **Comportements de l'API** : ajouter `/api/*`, `/health`, `/swagger*` et `/openapi/*`, avec les mêmes réglages et l'origine `api`. Ce sont eux qui resteront dirigés vers le serveur quand le comportement par défaut passera au front.
+4. **Réserver le serveur à CloudFront** : groupe de sécurité `grandcinema-sg` → modifier la règle HTTP : source **liste de préfixes gérée** `com.amazonaws.global.cloudfront.origin-facing`. L'Elastic IP ne répond plus depuis Internet ; seules les requêtes passées par CloudFront arrivent.
+5. **Adresse réelle du visiteur** : derrière CloudFront, l'API voit l'adresse de CloudFront, et la limitation à 10 tentatives par minute (US 2.1) s'appliquerait à tous les visiteurs à la fois. CloudFront transmet l'adresse du visiteur dans `X-Forwarded-For`. Sur une branche `chore/forwarded-headers`, dans `src/GrandCinema.Api/Program.cs` :
+
+   ```csharp
+   builder.Services.Configure<ForwardedHeadersOptions>(options =>
+   {
+       options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+       // Only CloudFront can reach the server (security group), and its addresses are not known in advance.
+       options.KnownIPNetworks.Clear();
+       options.KnownProxies.Clear();
+   });
+   ```
+
+   et `app.UseForwardedHeaders();` en **premier** middleware, avant `UseExceptionHandler`. Avec la limite par défaut d'un seul intermédiaire, l'API retient la dernière adresse ajoutée par CloudFront, celle du visiteur : une adresse inventée par le client dans l'en-tête est ignorée. (Avant .NET 10, la propriété s'appelle `KnownNetworks`.)
+6. **Vérifier** :
+
+   ```bash
+   curl https://<distribution>.cloudfront.net/health          # Healthy
+   curl https://<distribution>.cloudfront.net/api/schedule    # programmation du jour
+   curl -m 5 http://<elastic-ip>/health                       # plus de réponse : le serveur est réservé à CloudFront
+   ```
+
+   Puis, dans Swagger (`https://<distribution>.cloudfront.net/swagger`), `POST /api/tokens` avec un compte de démonstration et `GET /api/users/me` avec le jeton : `200` prouve que l'en-tête `Authorization` traverse CloudFront.
+7. **Variable GitHub** `API_URL` : `https://<distribution>.cloudfront.net` (étape 11 G). C'est aussi l'adresse donnée dans le tableau d'accès de la copie du Bloc 3.
+
 Limites assumées de cette variante :
 
-- **un seul serveur** pour tout : s'il tombe, l'application est indisponible le temps de le relancer ;
-- **HTTP seulement** : à compléter par un nom de domaine et HTTPS avant l'authentification (US 2.1). Caddy obtient et renouvelle seul un certificat Let's Encrypt dès qu'on remplace `:80` par un nom de domaine dans le Caddyfile et qu'on ouvre le port 443 ;
+- **un seul serveur** pour l'API et la base, sans Auto Scaling : s'il tombe, l'application est indisponible le temps de le relancer ;
+- **HTTP entre CloudFront et le serveur** : le navigateur parle en HTTPS à CloudFront, mais le jeton circule en clair sur le tronçon CloudFront → serveur ; correctif de production : nom de domaine, certificat et répartiteur de charge (HTTPS de bout en bout, critère de mise en production du Bloc 2) ;
 - **sauvegardes manuelles**, sans restauration à un instant précis comme RDS ;
 - **durée limitée** aux 6 mois du Free plan.
 
 Passer plus tard à l'architecture du chemin A ne demande aucun changement de code : remplacer le service `db` par une base RDS revient à changer la chaîne de connexion.
 
-- **Vérification :** `/health` répond `Healthy` sur l'Elastic IP ; `/api/schedule` renvoie la date du jour à Paris ; seul le port 80 est ouvert ; aucun secret dans le dépôt, les images ou GitHub ; une sauvegarde existe dans `/opt/grandcinema/backups`. PR : **\_\_**.
+- **Vérification :** `/health` répond `Healthy` par l'adresse CloudFront ; `/api/schedule` renvoie la date du jour à Paris ; seul le port 80 est ouvert, et seulement à CloudFront ; aucun secret dans le dépôt, les images ou GitHub ; une sauvegarde existe dans `/opt/grandcinema/backups`. PR : **\_\_**.
 
-_À quoi l'étape a servi : à mettre en ligne toute l'application sans aucun coût, en restant sur AWS. Pourquoi : le Free plan garantit l'absence de facturation, un seul serveur `t3.micro` reste largement dans les crédits, et GitHub Container Registry évite tout coût de stockage d'images. La sécurité n'est pas sacrifiée : un seul port ouvert, base invisible depuis Internet, mot de passe chiffré dans Parameter Store et lu au déploiement, accès au serveur sans SSH. Les compromis (un serveur, sauvegardes à la main, durée de 6 mois) sont connus et réversibles._
+_À quoi l'étape a servi : à mettre en ligne la recette sans aucun coût, en restant sur AWS et sur l'architecture du Bloc 1 pour le front. Pourquoi : le Free plan garantit l'absence de facturation, un seul serveur `t3.micro` reste largement dans les crédits, et GitHub Container Registry évite tout coût de stockage d'images. La sécurité n'est pas sacrifiée : HTTPS pour le navigateur, un seul port ouvert et réservé à CloudFront, base invisible depuis Internet, mot de passe chiffré dans Parameter Store et lu au déploiement, accès au serveur sans SSH. Les compromis (un serveur, sauvegardes à la main, durée de 6 mois) sont connus et réversibles._
 
 ### Étape 11 G – Variante gratuite : intégration et déploiement continus [ ]
 
-- **Quoi :** les mêmes workflows qu'à l'étape 11, adaptés à la variante gratuite : l'image est publiée dans GitHub Container Registry, et le déploiement lance `deploy/deploy.sh` sur le serveur.
+- **Quoi :** les mêmes workflows qu'à l'étape 11, adaptés à la variante gratuite : l'image est publiée dans GitHub Container Registry, et le déploiement lance `deploy/deploy.sh` sur le serveur. Comme le prévoit le Bloc 2, la **recette est déployée automatiquement à chaque fusion dans `dev`** ; la mise en production (chemin A) reste manuelle, après validation du Product Owner.
 - **Pourquoi :** GitHub Actions est gratuit pour un dépôt public ; GitHub publie dans son propre registre avec le jeton fourni à chaque workflow, sans aucun secret à créer.
 
 ```bash
@@ -3110,7 +3193,7 @@ mkdir -p .github/workflows
 
 **Intégration continue.** Créer `.github/workflows/ci.yml` exactement comme à l'étape 11a.
 
-**Accès de GitHub à AWS (OIDC).** Créer le fournisseur d'identité et le rôle `grandcinema-github-deploy` comme à l'étape 11b (même politique de confiance, limitée au dépôt et à `main`), mais avec cette politique de permissions, sans ECR :
+**Accès de GitHub à AWS (OIDC).** Créer le fournisseur d'identité et le rôle `grandcinema-github-deploy` comme à l'étape 11b (politique de confiance limitée au dépôt et à l'environnement GitHub `recette` : `sub` = `repo:Grand-Cinema-Studi/grand-cinema-backend:environment:recette`), mais avec cette politique de permissions, sans ECR :
 
 ```json
 {
@@ -3135,7 +3218,7 @@ mkdir -p .github/workflows
 
 Le workflow peut seulement lancer une commande sur ce serveur.
 
-**Variables du dépôt** (Settings → Secrets and variables → Actions → Variables) : `AWS_REGION` (`eu-west-3`), `AWS_ROLE_ARN`, `EC2_INSTANCE_ID`, `API_URL` (`http://<elastic-ip>`).
+**Variables du dépôt** (Settings → Secrets and variables → Actions → Variables) : `AWS_REGION` (`eu-west-3`), `AWS_ROLE_ARN`, `EC2_INSTANCE_ID`, `API_URL` (`https://<distribution>.cloudfront.net`, étape 10 G i).
 
 **Déploiement continu.** `.github/workflows/deploy.yml` :
 
@@ -3144,7 +3227,7 @@ name: Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [dev] # every merge into dev updates the acceptance environment (Bloc 2)
   workflow_dispatch:
 
 permissions:
@@ -3153,7 +3236,7 @@ permissions:
   packages: write
 
 concurrency:
-  group: deploy-production
+  group: deploy-recette
   cancel-in-progress: false
 
 env:
@@ -3174,6 +3257,7 @@ jobs:
   deploy:
     needs: test
     runs-on: ubuntu-latest
+    environment: recette
     steps:
       - uses: actions/checkout@v4
 
@@ -3217,6 +3301,7 @@ Différences avec l'étape 11d :
 
 - **`packages: write`** et `docker/login-action` : le workflow publie l'image dans GitHub Container Registry avec le jeton `GITHUB_TOKEN`, créé automatiquement pour chaque exécution et expiré à sa fin ;
 - **le nom de l'image est écrit en minuscules** (`env.IMAGE`) : le nom du dépôt contient des majuscules, interdites dans un nom d'image ;
+- **déclenchement sur `dev`** et **environnement `recette`** : chaque fusion dans `dev` met à jour la recette, où se fait la recette métier au fil du sprint (Bloc 2) ; seul un job de l'environnement `recette` obtient le rôle AWS ;
 - **le serveur reçoit deux commandes** : télécharger `deploy.sh` au commit déployé, puis l'exécuter (Run Command s'exécute en `root`, sans `sudo`).
 
 Enregistrer et activer, comme à l'étape 11e :
@@ -3227,17 +3312,17 @@ git commit -m "chore(ci): add CI and deployment workflows"
 git push -u origin chore/ci-cd
 ```
 
-Pull Request vers `dev` (CI verte), contrôle `build-and-test` obligatoire dans le ruleset, puis Pull Request `dev` → `main` : le workflow **Deploy** publie l'image et met à jour le serveur. Le jeton classique de l'étape 10 G f n'est plus utile : le révoquer (GitHub → Settings → Developer settings → Personal access tokens).
+Créer l'environnement GitHub `recette` (Settings → Environments → New environment, **Deployment branches** : `dev` seulement). Pull Request vers `dev` (CI verte, contrôle `build-and-test` obligatoire dans le ruleset), puis fusion : le workflow **Deploy** publie l'image et met à jour la recette. Le jeton classique de l'étape 10 G f n'est plus utile : le révoquer (GitHub → Settings → Developer settings → Personal access tokens).
 
-- **Vérification :** une fusion dans `main` publie l'image `ghcr.io/grand-cinema-studi/grand-cinema-backend:<commit>` et la déploie ; `/health` répond ; l'onglet Actions garde l'historique. PR : **\_\_**.
+- **Vérification :** une fusion dans `dev` publie l'image `ghcr.io/grand-cinema-studi/grand-cinema-backend:<commit>` et la déploie sur la recette ; `/health` répond par l'adresse CloudFront ; l'onglet Actions garde l'historique. PR : **\_\_**.
 
-_À quoi l'étape a servi : à automatiser la variante gratuite de bout en bout, toujours sans coût : GitHub Actions et GitHub Container Registry sont gratuits pour un dépôt public, et l'accès à AWS passe par OIDC, limité à une seule action sur un seul serveur. Pourquoi : chaque fusion dans `main` produit une image identifiée par son commit et la met en ligne en quelques minutes, sans geste manuel ni secret stocké dans GitHub._
+_À quoi l'étape a servi : à automatiser la variante gratuite de bout en bout, toujours sans coût : GitHub Actions et GitHub Container Registry sont gratuits pour un dépôt public, et l'accès à AWS passe par OIDC, limité à une seule action sur un seul serveur. Pourquoi : chaque fusion dans `dev` produit une image identifiée par son commit et la met en ligne en quelques minutes, sans geste manuel ni secret stocké dans GitHub._
 
 ---
 
 ## Phase 2 – Comptes et connexion (US 2.1)
 
-### Étape 12 – Créer un compte et se connecter (US 2.1) [ ]
+### Étape 12 – Créer un compte et se connecter (US 2.1) [ ] (code et tests sur la branche `feature/us-2-1-sign-up-and-sign-in` ; Pull Request vers `dev` à ouvrir)
 
 - **Quoi :** développer l'US 2.1 de bout en bout : inscription d'un spectateur, connexion, profil de l'utilisateur connecté, hachage des mots de passe, jeton JWT, accès refusé par défaut, limitation des tentatives, erreurs au format Problem Details, bouton « Authorize » dans Swagger, comptes de démonstration.
 - **Pourquoi :** l'US 2.3 (réserver) exige un utilisateur connecté (critère 1 de l'issue #9), et les US 5.2 et 5.3 un responsable (`Manager`). C'est aussi la story qui porte le plus de règles de sécurité (OWASP : authentification défaillante, défaillances cryptographiques, contrôle d'accès).
@@ -3457,12 +3542,11 @@ Comptes de démonstration ajoutés à `docs/database/seed-dev.sql`, rechargés p
 
 Leur colonne `PasswordHash` contient une empreinte au format v3 de `PasswordHasher` (PBKDF2, HMAC-SHA512, 100 000 itérations), jamais le mot de passe. Ces comptes servent au tableau « identifiants admin et utilisateur » demandé en tête du dossier du Bloc 3 ; ils ne doivent jamais exister sur une vraie production.
 
-En production (à faire au déploiement de l'US 2.1) :
+Sur la recette et en production :
 
-- créer le paramètre chiffré : `aws ssm put-parameter --name /grandcinema/jwt-signing-key --type SecureString --value "$(openssl rand -base64 48)"` ;
-- dans le script de déploiement (étape 10g ou 10 G e), le lire comme le mot de passe de la base et le passer au conteneur de l'API en variable d'environnement `Jwt__SigningKey` ;
-- passer l'environnement de démonstration en HTTPS (nom de domaine et Caddy, étape 10j) : un jeton envoyé en HTTP circule en clair ;
-- prendre en compte l'en-tête `X-Forwarded-For` envoyé par Caddy (`UseForwardedHeaders`), sinon l'API voit l'adresse IP du proxy et la limitation devient commune à tous les visiteurs.
+- clé de signature : paramètre chiffré `/grandcinema/recette/jwt-signing-key`, lu par le script de déploiement et passé au conteneur de l'API en variable d'environnement `Jwt__SigningKey` (étapes 10 G c et 10 G e) ; en production (chemin A), même principe sous `/grandcinema/prod/` ;
+- HTTPS : apporté par CloudFront entre le navigateur et l'application (étape 10 G i) ; le tronçon CloudFront → serveur reste en HTTP, limite écrite dans le guide de déploiement ;
+- prendre en compte l'en-tête `X-Forwarded-For` envoyé par CloudFront (`UseForwardedHeaders`, étape 10 G i), sinon l'API voit l'adresse IP de CloudFront et la limitation devient commune à tous les visiteurs.
 
 #### Étape 12j – Vérifier
 
@@ -3675,21 +3759,24 @@ git push -u origin <branche>                              # publier une branche
 
 - **Pourquoi EC2 et Docker ?** L'image Docker est identique en local, dans la CI et sur AWS ; EC2 laisse voir chaque brique (serveur, réseau, droits). Un service plus intégré (Elastic Beanstalk, ECS) masquerait ces mécanismes ; l'image permettrait d'y passer sans changer le code.
 - **Où sont les secrets en production ?** Dans Parameter Store, chiffrés (SecureString). Le serveur les lit grâce à son rôle IAM au moment du déploiement ; ils ne sont ni dans le dépôt, ni dans l'image, ni dans GitHub.
-- **Comment GitHub Actions accède-t-il à AWS ?** Par OIDC : des identifiants temporaires, limités à ce dépôt et à la branche `main`, avec les seuls droits de pousser une image et de lancer le script de déploiement. Aucune clé AWS n'est stockée.
-- **La base est-elle exposée sur Internet ?** Non : RDS sans accès public, et son pare-feu n'accepte que le groupe de sécurité de l'API. Le serveur lui-même n'a aucun port d'administration ouvert (Session Manager au lieu de SSH).
+- **Comment GitHub Actions accède-t-il à AWS ?** Par OIDC : des identifiants temporaires, limités à ce dépôt et à un environnement GitHub (`recette`, ou `production` après approbation du Product Owner), avec les seuls droits de pousser une image et de lancer le script de déploiement. Aucune clé AWS n'est stockée.
+- **La base est-elle exposée sur Internet ?** Non : RDS sans accès public, et son pare-feu n'accepte que le groupe de sécurité de l'API. En recette, PostgreSQL n'a aucun port publié : seuls les conteneurs du serveur l'atteignent. Le serveur lui-même n'a aucun port d'administration ouvert (Session Manager au lieu de SSH).
 - **Quand les migrations sont-elles appliquées ?** Par le script de déploiement, avec le bundle de la nouvelle image, avant de la démarrer. Jamais au démarrage de l'API : si elles échouent, l'ancienne version continue de tourner.
 - **Comment revenir en arrière ?** Chaque image est étiquetée avec son commit : relancer le script avec l'étiquette précédente. Les migrations doivent rester compatibles avec la version précédente.
 - **Pourquoi PostgreSQL en conteneur plutôt que RDS ?** Contrainte de budget nul : le compte Free plan n'est jamais facturé et un seul serveur consomme le moins de crédits possible. Les compromis sont connus (sauvegardes planifiées à la main, un seul serveur) ; passer à RDS ne demande que de changer la chaîne de connexion.
-- **Pourquoi un proxy Caddy devant l'API et le front ?** Un seul port ouvert, une seule adresse pour le front et l'API (donc pas de CORS), et HTTPS automatique dès qu'un nom de domaine sera ajouté.
+- **Pourquoi CloudFront devant le serveur ?** C'est le CDN du Bloc 1 : il sert le front depuis S3 et oriente `/api/*` vers l'API, sous une seule adresse (donc pas de CORS), avec le HTTPS sans nom de domaine. Le serveur n'accepte que les adresses de CloudFront. Limite connue : HTTP entre CloudFront et le serveur ; en production, répartiteur de charge et certificat.
+- **Pourquoi la recette se déploie seule, et pas la production ?** C'est la stratégie du Bloc 2 : chaque fusion dans `dev` part en recette, pour la recette métier au fil du sprint ; la mise en production est une décision du Product Owner, après vérification des critères (environnement GitHub `production` avec approbation).
+- **Où est l'Auto Scaling du Bloc 1 ?** Pas en recette, par budget. L'API est sans état (jeton JWT, blocage des places en base) : on ajoute des instances derrière un répartiteur de charge sans changer le code, et la base passe sur RDS en changeant la chaîne de connexion.
 - **Comment est réglé le problème du fuseau horaire ?** `TZ=Europe/Paris` dans le conteneur : « aujourd'hui » est le jour à Paris, même sur un serveur en UTC.
 
 ## Phases suivantes (à compléter)
 
-- Phase 2 : authentification (US 2.1) : voir l'étape 12 ; HTTPS et clé de signature à ajouter au déploiement (étape 12i).
-- Phase 3 : places restantes (US 2.2). L'US 1.1 est terminée aux étapes 7 bis à 7 quater.
+- Phase 2 : authentification (US 2.1) : voir l'étape 12 ; à compléter par l'acceptation de la politique de confidentialité et la suppression du compte (critères RGPD du Bloc 2) ; clé de signature et `X-Forwarded-For` au déploiement (étapes 10 G e et 10 G i).
+- Phase 3 : places restantes (US 2.2). L'US 1.1 est terminée aux étapes 7 bis et 7 ter (l'étape 7 quater, films à l'affiche, reste à faire) ; l'US 1.2 (consultation sans compte) est couverte côté API par la programmation publique.
 - Phase 4 : réservation avec verrouillage et expiration (US 2.3), bug de double réservation, test de reproduction et correctif.
-- Phase 5 : programmation et suivi des réservations (US 5.2, 5.3) ; avant l'US 5.3, rédiger l'ADR de la stratégie de lecture dans le dépôt de documentation (détaillé ci-dessous).
-- Phase 6 : tests de l'API complète (`WebApplicationFactory`), couverture, SonarCloud. Le déploiement continu est en place depuis l'étape 11.
+- Phase 5 : consultation des réservations par le caissier, programmation et suivi des réservations (US 5.1, 5.2, 5.3) ; avant l'US 5.3, rédiger l'ADR de la stratégie de lecture dans le dépôt de documentation (détaillé ci-dessous).
+- Phase 6 : paiement Stripe en mode test (US 3.1), billet dématérialisé avec QR code stocké sur S3 (US 3.2), scan du billet (US 4.1).
+- Phase 7 : tests de l'API complète (`WebApplicationFactory`), supervision CloudWatch (alarmes de la recette : état de l'instance, processeur, erreurs 5xx de CloudFront), tests de préproduction décrits au Bloc 2 (charge JMeter, scan OWASP ZAP, bout en bout Selenium avec le front). SonarCloud, la couverture et Dependabot sont en place dès l'étape 11 (ou 11 G), et le déploiement continu de la recette depuis l'étape 11 G.
 
 ### Phase 5 – Étape préalable à l'US 5.3 : ADR de la stratégie de lecture [ ]
 
