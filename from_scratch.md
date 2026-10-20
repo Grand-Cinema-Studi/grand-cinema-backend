@@ -3139,7 +3139,8 @@ CloudFront est le CDN du Bloc 1. Il apporte le HTTPS sans nom de domaine (adress
    - **Allowed HTTP methods** : GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE ;
    - **Cache policy** : `CachingDisabled` (les réponses de l'API ne sont jamais mises en cache) ;
    - **Origin request policy** : `AllViewerExceptHostHeader` (transmet l'en-tête `Authorization`, la chaîne de requête et les cookies) ;
-   - pas de pare-feu WAF (payant) ; classe de prix : Europe et Amérique du Nord.
+   - pas de pare-feu WAF (payant) ; classe de prix : Europe et Amérique du Nord ;
+   - **aucune réponse d'erreur personnalisée** (onglet *Error pages*) : elle s'appliquerait à toute la distribution, et un `403` ou un `404` de l'API deviendrait une page HTML en `200`. Le routage Angular passe par une CloudFront Function attachée au seul comportement par défaut (journal du front, étape 9).
 3. **Comportements de l'API** : ajouter `/api/*`, `/health`, `/swagger*` et `/openapi/*`, avec les mêmes réglages et l'origine `api`. Ce sont eux qui resteront dirigés vers le serveur quand le comportement par défaut passera au front.
 4. **Réserver le serveur à CloudFront** : groupe de sécurité `grandcinema-sg` → modifier la règle HTTP : source **liste de préfixes gérée** `com.amazonaws.global.cloudfront.origin-facing`. L'Elastic IP ne répond plus depuis Internet ; seules les requêtes passées par CloudFront arrivent.
 5. **Adresse réelle du visiteur** : derrière CloudFront, l'API voit l'adresse de CloudFront, et la limitation à 10 tentatives par minute (US 2.1) s'appliquerait à tous les visiteurs à la fois. CloudFront transmet l'adresse du visiteur dans `X-Forwarded-For`. Sur une branche `chore/forwarded-headers`, dans `src/GrandCinema.Api/Program.cs` :
