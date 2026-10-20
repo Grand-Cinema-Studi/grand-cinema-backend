@@ -18,6 +18,7 @@ Projet réalisé dans le cadre du Bachelor Développeur d'Application (Studi), B
 | Langage et framework | C# / .NET 10, ASP.NET Core Minimal API |
 | Architecture | Clean Architecture, CQRS sans bibliothèque |
 | Base de données | PostgreSQL 16 (Docker en local), EF Core 10 et migrations |
+| Authentification | Jeton JWT (`Authorization: Bearer`), mots de passe hachés par PBKDF2 (`PasswordHasher` d'ASP.NET Core), voir l'[ADR 0002](https://github.com/Grand-Cinema-Studi/grand-cinema-docs/blob/main/adr/0002-authentication-jwt.md) |
 | Documentation de l'API | OpenAPI (généré par ASP.NET Core) et Swagger UI |
 | Tests | xUnit, Moq, Shouldly, `FakeTimeProvider`, Testcontainers (PostgreSQL), Coverlet |
 
@@ -44,7 +45,7 @@ La couche Application est rangée par fonctionnalité (`Features/<Fonctionnalit�
 | User story | Contenu | État |
 |---|---|---|
 | US 1.1 | Consulter les films et les horaires | ✅ API : `GET /api/schedule` |
-| US 2.1 | Créer un compte et se connecter | ⬜ À faire |
+| US 2.1 | Créer un compte et se connecter | ✅ API : `POST /api/users`, `POST /api/tokens`, `GET /api/users/me` |
 | US 2.2 | Voir les places restantes en temps réel | ⬜ À faire |
 | US 2.3 | Réserver un nombre de places et passer au paiement | ⬜ À faire |
 | US 5.2 | Gérer la programmation | ⬜ À faire |
@@ -57,8 +58,13 @@ Les user stories, leurs critères d'acceptation, la Definition of Ready et la De
 | Méthode | Route | Rôle |
 |---|---|---|
 | `GET` | `/api/schedule?date=AAAA-MM-JJ` | Films et séances d'un jour (aujourd'hui si la date est omise), films triés par titre, séances triées par heure |
+| `POST` | `/api/users` | Création d'un compte spectateur ; renvoie un jeton d'accès (`201`) |
+| `POST` | `/api/tokens` | Connexion : renvoie un jeton d'accès (`200`), ou `401` sans préciser si l'adresse ou le mot de passe est faux |
+| `GET` | `/api/users/me` | Profil de l'utilisateur connecté (jeton obligatoire) |
 | `GET` | `/health` | État de l'application (`Healthy`) |
 | `GET` | `/` | Nom de l'API |
+
+Tout endpoint est réservé aux utilisateurs connectés, sauf ceux déclarés publics (programmation, inscription, connexion, `/health`). Dans Swagger, le bouton **Authorize** reçoit le jeton renvoyé par `POST /api/tokens`.
 
 En développement, la documentation interactive est sur `/swagger` et le document OpenAPI sur `/openapi/v1.json`. Swagger est désactivé par défaut et s'active par configuration (`Swagger:Enabled`, ou la variable d'environnement `Swagger__Enabled=true`).
 
@@ -101,6 +107,12 @@ Elle est stockée dans les secrets utilisateur .NET, hors du dépôt (mêmes val
 dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5432;Database=grandcinema;Username=grandcinema;Password=<mot-de-passe>" --project src/GrandCinema.Api
 ```
 
+Clé de signature des jetons JWT (32 octets au moins), également hors du dépôt :
+
+```bash
+dotnet user-secrets set "Jwt:SigningKey" "$(openssl rand -base64 48)" --project src/GrandCinema.Api
+```
+
 ### 4. Créer les tables et charger les données de démonstration
 
 ```bash
@@ -108,7 +120,7 @@ dotnet ef database update --project src/GrandCinema.Infrastructure --startup-pro
 bash scripts/reset-demo-screenings.sh
 ```
 
-Le script charge `docs/database/seed-dev.sql` (une salle, deux films, des séances aujourd'hui et demain) ; il peut être relancé chaque jour pour remettre les séances de démonstration à la date du jour.
+Le script charge `docs/database/seed-dev.sql` (une salle, deux films, des séances aujourd'hui et demain, et deux comptes de démonstration : `manager@grand-cinema.test` / `Manager-Demo-2026!` et `client@grand-cinema.test` / `Client-Demo-2026!`) ; il peut être relancé chaque jour pour remettre les séances de démonstration à la date du jour.
 
 ### 5. Lancer l'API
 

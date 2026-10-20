@@ -1,6 +1,8 @@
 using GrandCinema.Application.Abstractions.Persistence;
+using GrandCinema.Application.Abstractions.Security;
 using GrandCinema.Infrastructure.Persistence;
 using GrandCinema.Infrastructure.Persistence.Repositories;
+using GrandCinema.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,6 +19,12 @@ public static class DependencyInjection
         services.AddDbContext<GrandCinemaDbContext>(options => options.UseNpgsql(connectionString));
 
         services.AddScoped<IScreeningReadRepository, ScreeningReadRepository>();
+        services.AddScoped<IUserRepository, UserRepository>();
+
+        // Read on first use, not at startup: the EF Core design-time tools build the host without any JWT settings.
+        services.AddSingleton(_ => JwtOptions.FromConfiguration(configuration));
+        services.AddSingleton<IAccessTokenGenerator, JwtAccessTokenGenerator>();
+        services.AddSingleton<IPasswordHasher, AspNetCorePasswordHasher>();
 
         return services;
     }

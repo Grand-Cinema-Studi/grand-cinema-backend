@@ -30,6 +30,7 @@ Correspondance avec le vocabulaire du Bloc 1 (MCD, user stories) :
 | Place réservée                                               | ReservedSeat                                                      |
 | Utilisateur                                                  | User                                                              |
 | Rôle : Spectateur, Caissier, Contrôleur, Responsable         | UserRole : Customer, Cashier, TicketInspector, Manager            |
+| Inscription / Connexion / Jeton d'accès                      | RegisterUser / AuthenticateUser / AccessToken                     |
 | Statut : En attente de paiement, Confirmée, Expirée, Annulée | ReservationStatus : PendingPayment, Confirmed, Expired, Cancelled |
 
 Règles complémentaires :
@@ -3234,6 +3235,341 @@ _À quoi l'étape a servi : à automatiser la variante gratuite de bout en bout,
 
 ---
 
+## Phase 2 – Comptes et connexion (US 2.1)
+
+### Étape 12 – Créer un compte et se connecter (US 2.1) [ ]
+
+- **Quoi :** développer l'US 2.1 de bout en bout : inscription d'un spectateur, connexion, profil de l'utilisateur connecté, hachage des mots de passe, jeton JWT, accès refusé par défaut, limitation des tentatives, erreurs au format Problem Details, bouton « Authorize » dans Swagger, comptes de démonstration.
+- **Pourquoi :** l'US 2.3 (réserver) exige un utilisateur connecté (critère 1 de l'issue #9), et les US 5.2 et 5.3 un responsable (`Manager`). C'est aussi la story qui porte le plus de règles de sécurité (OWASP : authentification défaillante, défaillances cryptographiques, contrôle d'accès).
+
+Critères d'acceptation (issue #18) :
+
+1. Quand je saisis des informations valides, mon compte est créé et je suis connecté.
+2. Si l'adresse e-mail est déjà utilisée, la création est refusée avec un message clair.
+3. Si mes identifiants sont faux, la connexion est refusée avec un message qui ne dit pas lequel est faux.
+4. Mon mot de passe n'est jamais stocké en clair.
+
+Méthode suivie pour cette story : le code et les tests ont été écrits ensemble, en un seul passage, à partir de la liste de tests de l'étape 12c. L'historique ne montre donc pas un commit rouge puis un commit vert pour chaque cycle. Pour prouver que chaque test sait échouer, on applique la règle de l'étape 5e bis : casser volontairement le code, constater le rouge, rétablir (tableau de l'étape 12j). La vérification est notée dans le message de commit.
+
+#### Étape 12a – Décision d'architecture (ADR 0002) et documentation
+
+Les choix de l'US 2.1 (jeton JWT plutôt que cookie, `PasswordHasher` d'ASP.NET Core plutôt qu'Argon2, accès refusé par défaut) sont consignés dans un ADR, comme annoncé dans `security.md`. Dans le dépôt de documentation :
+
+```bash
+cd ../grand-cinema-docs
+git switch main
+git pull
+git switch -c docs/adr-authentication
+```
+
+Fichiers concernés (déjà écrits) :
+
+- `adr/0002-authentication-jwt.md` : contexte, décision, alternatives écartées (cookie `HttpOnly`, ASP.NET Core Identity complet, fournisseur externe, Argon2), conséquences ;
+- `adr/README.md` : ligne 0002 ajoutée à l'index, décision retirée de la liste « à rédiger » ;
+- `security/security.md` : section « Comptes » réécrite (plus « à venir »), ligne sur la politique de repli, tableau OWASP mis à jour ;
+- `api/api-conventions.md` : trois endpoints ajoutés au tableau, sections « Format des erreurs » et « Authentification » passées de « à venir » à « en place ».
+
+```bash
+git add adr security api
+git commit -m "docs(adr): add authentication decision (JWT, PBKDF2)"
+git push -u origin docs/adr-authentication
+```
+
+Ouvrir la Pull Request vers `main` du dépôt de documentation, la fusionner (voir l'étape 3c), puis revenir au backend : `cd ../grand-cinema-backend`.
+
+_À quoi la sous-étape a servi : à écrire la décision avant le code, avec les options écartées et leurs raisons. Pourquoi : « pourquoi un JWT et pas un cookie ? » est une question attendue à l'oral ; l'ADR donne une réponse argumentée et datée, et la Pull Request du backend peut le citer._
+
+#### Étape 12b – Branche et paquets
+
+```bash
+git switch dev
+git pull
+git switch -c feature/us-2-1-sign-up-and-sign-in dev
+```
+
+Paquets (à ajouter avec `dotnet add`, qui choisit la dernière version stable et l'écrit dans le `.csproj`) :
+
+```bash
+# Infrastructure : hachage des mots de passe (PasswordHasher) et création des jetons JWT
+dotnet add src/GrandCinema.Infrastructure package Microsoft.Extensions.Identity.Core
+dotnet add src/GrandCinema.Infrastructure package Microsoft.IdentityModel.JsonWebTokens
+# Api : validation des jetons reçus dans l'en-tête Authorization
+dotnet add src/GrandCinema.Api package Microsoft.AspNetCore.Authentication.JwtBearer
+# Tests d'Infrastructure : horloge simulée pour l'expiration du jeton
+dotnet add tests/GrandCinema.Infrastructure.Tests package Microsoft.Extensions.TimeProvider.Testing
+```
+
+- `Microsoft.Extensions.Identity.Core` contient seulement le cœur d'ASP.NET Core Identity, dont `PasswordHasher` : ni tables, ni pages, ni gestionnaire d'utilisateurs.
+- Vérifier que tous les paquets `Microsoft.IdentityModel.*` ont la **même version** (un mélange de versions provoque des erreurs à l'exécution lors de la validation des jetons) :
+
+```bash
+dotnet list src/GrandCinema.Api package --include-transitive | grep IdentityModel
+```
+
+Si les versions diffèrent, ajouter à l'Api le paquet en retard à la version la plus haute affichée, par exemple : `dotnet add src/GrandCinema.Api package Microsoft.IdentityModel.Protocols.OpenIdConnect --version <version la plus haute>`.
+
+_À quoi la sous-étape a servi : à ouvrir la branche de l'US 2.1 et à n'ajouter que les trois briques utiles, chacune dans la couche qui en a besoin. Pourquoi : la couche Application ne référence aucun de ces paquets ; elle ne connaît que ses interfaces (`IPasswordHasher`, `IAccessTokenGenerator`), ce qui garde le métier testable sans cryptographie réelle._
+
+#### Étape 12c – Des critères aux tests
+
+| Critère | Test | Niveau |
+|---|---|---|
+| 1 – Compte créé et utilisateur connecté | `When_valid_information_is_entered_Then_the_account_is_created_and_the_user_is_logged_in` | unitaire (`RegisterUserHandlerTests`) |
+| 1 – Inscription publique = spectateur (règle de `security.md`) | `When_an_account_is_created_Then_its_role_is_customer` | unitaire |
+| 1 – Données invalides refusées, champ par champ | `When_the_information_is_invalid_Then_the_account_creation_is_refused_and_each_invalid_field_is_listed` | unitaire |
+| 1 – Adresse en minuscules (règle de `security.md`) | `When_the_email_has_uppercase_letters_or_spaces_Then_it_is_stored_in_lowercase_without_spaces` | unitaire |
+| 2 – Adresse déjà utilisée | `When_the_email_is_already_used_Then_the_account_creation_is_refused_with_a_clear_message` | unitaire |
+| 2 – Unicité garantie par la base, même en cas d'inscriptions simultanées | `When_the_email_is_already_used_Then_the_second_account_is_refused_by_the_database` | intégration (`UserRepositoryTests`) |
+| 1 – Le compte enregistré se relit | `When_a_user_is_added_Then_it_can_be_found_by_email_and_by_id` | intégration |
+| 3 – Connexion réussie | `When_the_credentials_are_correct_Then_the_user_is_logged_in` | unitaire (`AuthenticateUserHandlerTests`) |
+| 3 – Mot de passe faux | `When_the_password_is_wrong_Then_the_login_is_refused_without_saying_which_credential_is_wrong` | unitaire |
+| 3 – Adresse inconnue : même message | `When_the_email_is_unknown_Then_the_login_is_refused_with_the_same_message_as_a_wrong_password` | unitaire |
+| 3 – Adresse saisie avec des majuscules | `When_the_email_is_typed_with_uppercase_letters_Then_the_account_is_found` | unitaire |
+| 4 – Le mot de passe passe par le hachage | `When_an_account_is_created_Then_the_password_is_stored_hashed` | unitaire |
+| 4 – L'empreinte ne contient pas le mot de passe | `When_a_password_is_hashed_Then_the_hash_does_not_contain_the_password` | unitaire (`AspNetCorePasswordHasherTests`) |
+| 4 – Empreinte salée | `When_the_same_password_is_hashed_twice_Then_the_hashes_differ_because_they_are_salted` | unitaire |
+| 4 – Vérification | `When_the_right_password_is_given_Then_it_matches_its_hash`, `When_a_wrong_password_is_given_Then_it_does_not_match_the_hash` | unitaire |
+| Session – jeton signé, porte l'identifiant et le rôle | `When_a_token_is_generated_Then_it_is_signed_and_identifies_the_user_and_their_role` | unitaire (`JwtAccessTokenGeneratorTests`) |
+| Session – expiration | `When_a_token_is_generated_Then_it_expires_after_the_configured_delay` | unitaire |
+| Session – jeton falsifié refusé | `When_a_token_is_checked_with_another_key_Then_it_is_rejected` | unitaire |
+| Profil de l'utilisateur connecté | `When_the_signed_in_user_exists_Then_their_profile_is_returned`, `When_the_account_no_longer_exists_Then_user_not_found_is_returned` | unitaire (`GetCurrentUserHandlerTests`) |
+
+Les tests du hachage et du jeton sont dans le projet de tests d'Infrastructure, mais sans l'étiquette `Integration` : ils n'ont besoin ni de Docker ni de base.
+
+#### Étape 12d – Le résultat métier : `Result<T>` et `Error`
+
+Jusqu'ici, un handler renvoyait toujours une donnée. L'US 2.1 introduit des **échecs attendus** (adresse déjà utilisée, identifiants faux) : ce ne sont pas des bugs, donc pas des exceptions (règle de `api-conventions.md`). Fichiers dans `src/GrandCinema.Application/Abstractions/Results/` :
+
+- `Error.cs` : un type (`Validation`, `Unauthorized`, `Forbidden`, `NotFound`, `Conflict`), un code stable (`email-already-used`) et un message ; pour une erreur de validation, la liste des champs en cause ;
+- `ErrorType.cs` : l'énumération des types ;
+- `Result.cs` : soit une valeur, soit une erreur. Les conversions implicites permettent d'écrire `return AuthErrors.EmailAlreadyUsed;` ou `return dto;` dans un handler. `IsSuccess` et `IsFailure` sont annotés (`MemberNotNullWhen`) : après `if (result.IsFailure)`, le compilateur sait que `result.Error` n'est pas nul.
+
+Côté Api, `src/GrandCinema.Api/Errors/ErrorMappings.cs` traduit une `Error` en réponse **Problem Details** (RFC 9457) : `Validation` → 400 (avec le champ `errors`), `Unauthorized` → 401, `Forbidden` → 403, `NotFound` → 404, `Conflict` → 409, et `type` vaut `/errors/<code>`. C'est ce `type` que le front utilise pour choisir son message en français.
+
+Exemple de réponse à une inscription avec une adresse déjà prise :
+
+```json
+{
+  "type": "/errors/email-already-used",
+  "title": "An account already exists with this email address.",
+  "status": 409
+}
+```
+
+_Pourquoi pas des exceptions : une exception coûte cher, se lit mal (le `throw` est loin du `catch`) et se confond avec les vraies pannes. Le résultat rend l'échec visible dans la signature du handler, et le test le vérifie comme n'importe quelle valeur._
+
+#### Étape 12e – Inscription : `RegisterUserHandler`
+
+Fichiers dans `src/GrandCinema.Application/` :
+
+- `Abstractions/Persistence/IUserRepository.cs` : `TryAddAsync` (renvoie `false` si l'adresse est déjà prise), `GetByEmailAsync`, `GetByIdAsync`. Nom en `Repository` et non `ReadRepository` : il écrit aussi (convention des standards de code) ;
+- `Abstractions/Security/IPasswordHasher.cs`, `IAccessTokenGenerator.cs`, `AccessToken.cs` : les contrats de sécurité, implémentés dans Infrastructure ;
+- `Features/Auth/AuthErrors.cs` : les trois erreurs de la fonctionnalité ;
+- `Features/Auth/EmailNormalizer.cs` : `Trim().ToLowerInvariant()`, partagé par l'inscription et la connexion ;
+- `Features/Auth/DTOs/` : `UserDto` (sans le mot de passe ni son empreinte), `AuthTokenDto` (jeton, expiration, utilisateur), et `Mappings/UserMappings.cs` ;
+- `Features/Auth/Commands/RegisterUserCommand.cs` et `RegisterUserHandler.cs`.
+
+Ce que fait le handler, dans l'ordre :
+
+1. valide les données (adresse au format e-mail et de 256 caractères au plus, mot de passe de 12 à 128 caractères, prénom et nom obligatoires) et renvoie **toutes** les erreurs d'un coup ;
+2. construit l'utilisateur : adresse normalisée, empreinte du mot de passe, date de création en UTC (`TimeProvider`), rôle **toujours** `Customer` ;
+3. demande au repository de l'enregistrer ; s'il répond `false`, renvoie `AuthErrors.EmailAlreadyUsed` ;
+4. génère le jeton et renvoie l'`AuthTokenDto` : l'utilisateur est connecté dès l'inscription (critère 1).
+
+Tests : `tests/GrandCinema.Application.Tests/Features/Auth/Commands/RegisterUserHandlerTests.cs`. Le repository, le hacheur et le générateur de jetons sont des doublures (Moq) ; le repository simulé garde dans `_savedUser` l'utilisateur qu'on lui passe, pour vérifier ce qui serait enregistré.
+
+_Pourquoi pas de vérification « l'adresse existe-t-elle ? » avant l'enregistrement : deux inscriptions simultanées avec la même adresse passeraient toutes les deux la vérification (même situation de concurrence que le bug 0001). C'est l'index unique de la base qui tranche, et le repository traduit son refus en `false`. Une seule source de vérité, et une requête de moins._
+
+_Pourquoi 12 caractères : c'est le minimum recommandé par la CNIL quand le mot de passe est le seul facteur d'authentification (délibération 2022-100). Le maximum de 128 évite qu'un mot de passe de plusieurs mégaoctets ne coûte un hachage très long (déni de service)._
+
+#### Étape 12f – Connexion et profil : `AuthenticateUserHandler`, `GetCurrentUserHandler`
+
+- `Features/Auth/Commands/AuthenticateUserCommand.cs` et `AuthenticateUserHandler.cs` : cherche l'utilisateur par son adresse normalisée, vérifie le mot de passe, renvoie un jeton. Adresse inconnue **ou** mot de passe faux : la même erreur `AuthErrors.InvalidCredentials` (critère 3).
+- `Features/Auth/Queries/GetCurrentUserQuery.cs` et `GetCurrentUserHandler.cs` : le profil de l'utilisateur connecté, dont l'identifiant vient du jeton. Il sert au front à afficher « Bonjour Léa » et à vérifier qu'une session est encore valable.
+- `DependencyInjection.cs` d'Application : une ligne par nouveau handler.
+
+La connexion est une **commande** et non une requête : elle ne modifie pas la base, mais c'est une action (elle délivre un droit d'accès) et elle peut échouer pour une raison métier.
+
+Tests : `tests/GrandCinema.Application.Tests/Features/Auth/Commands/AuthenticateUserHandlerTests.cs` et `Features/Auth/Queries/GetCurrentUserHandlerTests.cs`.
+
+#### Étape 12g – Infrastructure : utilisateurs, hachage, jetons
+
+Fichiers dans `src/GrandCinema.Infrastructure/` :
+
+- `Persistence/Repositories/UserRepository.cs` : `TryAddAsync` enregistre l'utilisateur et intercepte **uniquement** la violation d'unicité de PostgreSQL (code `23505`, `PostgresErrorCodes.UniqueViolation`) pour renvoyer `false` ; toute autre erreur remonte normalement. Lectures en `AsNoTracking`.
+- `Security/AspNetCorePasswordHasher.cs` : adaptateur autour de `PasswordHasher<User>` d'ASP.NET Core. Format v3 : PBKDF2 avec HMAC-SHA512, 100 000 itérations, sel aléatoire de 128 bits ; l'algorithme et le nombre d'itérations sont écrits dans l'empreinte elle-même, ce qui permet de les augmenter plus tard sans invalider les mots de passe existants.
+- `Security/JwtOptions.cs` : émetteur, audience, clé de signature, durée de validité (60 minutes par défaut), lus dans la section `Jwt` de la configuration. Une clé absente ou de moins de 32 octets arrête l'application avec un message clair : HMAC-SHA256 exige une clé de 256 bits.
+- `Security/JwtAccessTokenGenerator.cs` : crée le jeton avec `JsonWebTokenHandler` ; heure lue par `TimeProvider`, ce qui permet de tester l'expiration.
+- `Security/AppClaimTypes.cs` : les noms des informations du jeton (`sub`, `email`, `role`, `jti`), partagés par le générateur et l'Api.
+- `DependencyInjection.cs` : enregistrement du repository, du hacheur, du générateur et de `JwtOptions`. `JwtOptions` est lu **à la première utilisation**, pas au démarrage : les outils `dotnet ef` construisent l'application sans configuration JWT (comme le bundle de migrations de l'étape 9), et ne doivent pas échouer pour autant.
+
+Tests dans `tests/GrandCinema.Infrastructure.Tests/` : `Persistence/Repositories/UserRepositoryTests.cs` (intégration, PostgreSQL jetable), `Security/AspNetCorePasswordHasherTests.cs`, `Security/JwtAccessTokenGeneratorTests.cs`.
+
+_Pourquoi un adaptateur autour de `PasswordHasher` : la couche Application ne dépend pas d'ASP.NET Core (règle des standards de code), et changer d'algorithme (Argon2) ne toucherait qu'une classe._
+
+#### Étape 12h – API : endpoints, accès refusé par défaut, limitation, erreurs, Swagger
+
+Fichiers dans `src/GrandCinema.Api/` :
+
+| Fichier | Rôle |
+|---|---|
+| `Endpoints/Auth/RegisterUserEndpoints.cs` | `POST /api/users` : `201 Created` (en-tête `Location: /api/users/me`) avec le jeton, ou `400` / `409` |
+| `Endpoints/Auth/AuthenticateUserEndpoints.cs` | `POST /api/tokens` : `200` avec le jeton, ou `401` |
+| `Endpoints/Auth/CurrentUserEndpoints.cs` | `GET /api/users/me` : jeton obligatoire |
+| `Endpoints/Screenings/ScheduleEndpoints.cs` | ajout de `.AllowAnonymous()` : la programmation reste publique |
+| `Errors/ErrorMappings.cs` | `Error` → Problem Details (étape 12d) |
+| `Security/AuthenticationSetup.cs` | validation des jetons JWT, politique de repli, limitation des tentatives |
+| `Security/ClaimsPrincipalExtensions.cs` | `GetUserId()` : l'identifiant de l'utilisateur, lu dans le jeton |
+| `OpenApi/BearerSecuritySchemeTransformer.cs` | bouton **Authorize** dans Swagger UI |
+| `Program.cs` | branchement de l'ensemble |
+| `appsettings.json` | section `Jwt` (émetteur, audience, durée), **sans** la clé |
+
+Routes : la convention de l'API veut des ressources au pluriel et le verbe HTTP comme action. Créer un compte, c'est créer un utilisateur (`POST /api/users`) ; se connecter, c'est obtenir un jeton (`POST /api/tokens`) ; `/api/users/me` désigne l'utilisateur du jeton, sans identifiant dans l'URL.
+
+Points de `AuthenticationSetup.cs` :
+
+- `MapInboundClaims = false` : ASP.NET Core garde les noms courts du jeton (`sub`, `role`) au lieu de les renommer en longues URI .NET ; `NameClaimType` et `RoleClaimType` lui disent où lire l'identifiant et le rôle (`RequireRole("Manager")` fonctionnera ainsi en US 5.2).
+- `ClockSkew` de 30 secondes au lieu de 5 minutes par défaut : un jeton expiré est refusé presque aussitôt.
+- **Politique de repli** (`SetFallbackPolicy`) : tout endpoint qui ne déclare rien exige un utilisateur connecté. Un endpoint public doit le dire (`AllowAnonymous`) : un oubli ferme l'accès au lieu de l'ouvrir. C'est pourquoi `/api/schedule`, `/health`, `/` et `/openapi/v1.json` portent maintenant `.AllowAnonymous()`.
+- **Limitation** : 10 appels par minute et par adresse IP sur l'inscription et la connexion, `429 Too Many Requests` au-delà ; contre les attaques par force brute sur les mots de passe.
+
+Ordre des middlewares dans `Program.cs` : gestion des exceptions (réponse 500 générique, sans trace technique), pages de statut, Swagger, **puis** authentification, autorisation et limitation. Swagger UI passe avant l'autorisation : ses fichiers restent accessibles sans jeton, alors que la politique de repli s'applique au reste.
+
+_Pourquoi `UseAuthentication()` et `UseAuthorization()` sont écrits explicitement : ASP.NET Core les ajouterait seul, mais au début du pipeline, donc avant Swagger UI, dont les pages seraient alors refusées par la politique de repli._
+
+#### Étape 12i – Configuration et données de démonstration
+
+Clé de signature en développement, hors du dépôt (comme la chaîne de connexion à l'étape 7) :
+
+```bash
+dotnet user-secrets set "Jwt:SigningKey" "$(openssl rand -base64 48)" --project src/GrandCinema.Api
+dotnet user-secrets list --project src/GrandCinema.Api
+```
+
+(Sans `openssl`, n'importe quelle chaîne aléatoire de plus de 32 caractères convient : elle ne sert qu'en local.)
+
+Comptes de démonstration ajoutés à `docs/database/seed-dev.sql`, rechargés par `scripts/reset-demo-screenings.sh` :
+
+| Rôle | Adresse | Mot de passe |
+|---|---|---|
+| Responsable (`Manager`) | `manager@grand-cinema.test` | `Manager-Demo-2026!` |
+| Spectateur (`Customer`) | `client@grand-cinema.test` | `Client-Demo-2026!` |
+
+Leur colonne `PasswordHash` contient une empreinte au format v3 de `PasswordHasher` (PBKDF2, HMAC-SHA512, 100 000 itérations), jamais le mot de passe. Ces comptes servent au tableau « identifiants admin et utilisateur » demandé en tête du dossier du Bloc 3 ; ils ne doivent jamais exister sur une vraie production.
+
+En production (à faire au déploiement de l'US 2.1) :
+
+- créer le paramètre chiffré : `aws ssm put-parameter --name /grandcinema/jwt-signing-key --type SecureString --value "$(openssl rand -base64 48)"` ;
+- dans le script de déploiement (étape 10g ou 10 G e), le lire comme le mot de passe de la base et le passer au conteneur de l'API en variable d'environnement `Jwt__SigningKey` ;
+- passer l'environnement de démonstration en HTTPS (nom de domaine et Caddy, étape 10j) : un jeton envoyé en HTTP circule en clair ;
+- prendre en compte l'en-tête `X-Forwarded-For` envoyé par Caddy (`UseForwardedHeaders`), sinon l'API voit l'adresse IP du proxy et la limitation devient commune à tous les visiteurs.
+
+#### Étape 12j – Vérifier
+
+```bash
+dotnet build
+dotnet test --filter "US=2.1"
+dotnet test
+```
+
+Résultat attendu : 21 tests de l'US 2.1 réussis (19 unitaires, 2 d'intégration), et toute la suite reste verte.
+
+**Prouver que les tests savent échouer** (sans rien commiter, une modification à la fois, puis la défaire) :
+
+| Modification temporaire | Test(s) qui doivent passer au rouge |
+|---|---|
+| `RegisterUserHandler` : `Role = UserRole.Manager` | `..._Then_its_role_is_customer` |
+| `RegisterUserHandler` : `PasswordHash = command.Password` | `..._Then_the_password_is_stored_hashed` |
+| `RegisterUserHandler` : `Email = command.Email` (sans normaliser) | `..._stored_in_lowercase_without_spaces` |
+| `RegisterUserHandler` : ignorer le `false` de `TryAddAsync` | `When_the_email_is_already_used_Then_the_account_creation_is_refused_with_a_clear_message` |
+| `RegisterUserHandler` : supprimer le bloc de validation | `..._each_invalid_field_is_listed` |
+| `AuthenticateUserHandler` : supprimer `!_passwordHasher.Verify(...)` | `When_the_password_is_wrong_...` |
+| `AuthenticateUserHandler` : renvoyer `AuthErrors.UserNotFound` si l'utilisateur est inconnu | `When_the_email_is_unknown_Then_the_login_is_refused_with_the_same_message_as_a_wrong_password` |
+| `UserRepository` : supprimer le `catch` | `When_the_email_is_already_used_Then_the_second_account_is_refused_by_the_database` (exception au lieu de `false`) |
+| `JwtAccessTokenGenerator` : `AddMinutes(_options.ExpirationMinutes + 1)` | `..._expires_after_the_configured_delay` |
+
+Essai manuel, API lancée (`dotnet run --project src/GrandCinema.Api`) et données de démonstration chargées :
+
+```bash
+API=http://localhost:5073
+
+# Inscription : 201 et un jeton
+curl -i -X POST $API/api/users -H "Content-Type: application/json" \
+  -d '{"email":"lea.dupont@example.com","password":"festival-jazz-2026","firstName":"Léa","lastName":"Dupont"}'
+
+# Même adresse : 409, type /errors/email-already-used
+curl -i -X POST $API/api/users -H "Content-Type: application/json" \
+  -d '{"email":"LEA.DUPONT@example.com","password":"festival-jazz-2026","firstName":"Léa","lastName":"Dupont"}'
+
+# Données invalides : 400 et la liste des champs
+curl -i -X POST $API/api/users -H "Content-Type: application/json" \
+  -d '{"email":"pas-une-adresse","password":"court","firstName":"","lastName":"Dupont"}'
+
+# Mauvais mot de passe : 401, même message qu'une adresse inconnue
+curl -i -X POST $API/api/tokens -H "Content-Type: application/json" \
+  -d '{"email":"client@grand-cinema.test","password":"mauvais-mot-de-passe"}'
+
+# Connexion du compte de démonstration, jeton gardé dans une variable (jq requis)
+TOKEN=$(curl -s -X POST $API/api/tokens -H "Content-Type: application/json" \
+  -d '{"email":"client@grand-cinema.test","password":"Client-Demo-2026!"}' | jq -r .accessToken)
+
+# Profil : 401 sans jeton, 200 avec
+curl -i $API/api/users/me
+curl -i $API/api/users/me -H "Authorization: Bearer $TOKEN"
+
+# La programmation reste publique : 200 sans jeton
+curl -i $API/api/schedule
+```
+
+Dans Swagger (`/swagger`) : `POST /api/tokens` avec le compte de démonstration, copier `accessToken`, cliquer sur **Authorize**, coller le jeton, puis `GET /api/users/me` répond `200`. Onze connexions en moins d'une minute : la onzième reçoit `429`.
+
+Contrôle en base : `docker compose exec db psql -U <utilisateur> -d <base> -c 'SELECT "Email", "PasswordHash", "Role" FROM "Users";'` ; la colonne `PasswordHash` commence par `AQAAAAIAAYagAAAAE` (format v3) et ne contient aucun mot de passe.
+
+#### Étape 12k – Enregistrer
+
+Des commits par couche, pour que l'historique se lise comme la construction de la story :
+
+```bash
+git add src/GrandCinema.Application/Abstractions src/GrandCinema.Application/Features/Auth/AuthErrors.cs \
+        src/GrandCinema.Application/Features/Auth/EmailNormalizer.cs src/GrandCinema.Application/Features/Auth/DTOs \
+        src/GrandCinema.Application/Features/Auth/Commands/RegisterUser* \
+        tests/GrandCinema.Application.Tests/Features/Auth/Commands/RegisterUserHandlerTests.cs
+git commit -m "feat(us-2.1): register a customer account" -m "Verified red by temporarily breaking role, hashing, email normalization, duplicate check and validation."
+
+git add src/GrandCinema.Application tests/GrandCinema.Application.Tests
+git commit -m "feat(us-2.1): sign in and read the signed-in user" -m "Verified red by removing the password check and by returning a distinct error for an unknown email."
+
+git add src/GrandCinema.Infrastructure tests/GrandCinema.Infrastructure.Tests
+git commit -m "feat(us-2.1): store users, hash passwords and issue JWT" -m "Verified red by removing the unique violation catch and by shifting the token expiry."
+
+git add src/GrandCinema.Api
+git commit -m "feat(us-2.1): add auth endpoints, default deny policy and rate limiting"
+
+git add docs README.md from_scratch.md
+git commit -m "docs(us-2.1): demo accounts, README and journal"
+
+git push -u origin feature/us-2-1-sign-up-and-sign-in
+```
+
+Ouvrir la Pull Request vers `dev` (voir l'étape 3c), avec dans la description : les 4 critères et leurs tests, le lien vers l'ADR 0002, et la capture de `dotnet test`. Fusionner en merge commit.
+
+- **Vérification :** 21 tests de l'US 2.1 verts, suite complète verte ; dans Swagger, inscription (`201`), doublon (`409`), connexion (`200`), mauvais mot de passe (`401`), profil sans jeton (`401`) et avec jeton (`200`) ; la programmation reste accessible sans jeton ; aucune empreinte ne contient de mot de passe en clair. PR backend : **\_\_**. PR documentation (ADR 0002) : **\_\_**.
+
+_À quoi l'étape a servi : à donner une identité aux utilisateurs, condition des US 2.3, 5.2 et 5.3, en appliquant les règles de sécurité écrites avant le code : mots de passe hachés et salés, message d'échec neutre, accès refusé par défaut, limitation des tentatives, secrets hors du dépôt. Pourquoi : chaque critère d'acceptation a son test, chaque règle de sécurité a son mécanisme dans le framework (aucune cryptographie écrite à la main), et le résultat métier (`Result<T>`) fixe la façon dont toutes les stories suivantes renverront leurs erreurs._
+
+### Questions probables du jury (phase 2)
+
+- **Pourquoi un JWT et pas un cookie de session ?** L'API reste sans état : aucune session à partager si l'on ajoute des instances pendant le festival. Le cookie `HttpOnly` protège mieux contre le vol par XSS, mais demande une protection CSRF ; ce compromis est écrit dans l'ADR 0002, avec ce qui ferait changer d'avis.
+- **Que contient le jeton, et peut-on le modifier ?** L'identifiant, l'adresse et le rôle, en clair (encodés en Base64, pas chiffrés) : rien de secret. Il est signé par HMAC-SHA256 avec une clé que seul le serveur connaît : changer le rôle casse la signature, et le jeton est refusé (test `When_a_token_is_checked_with_another_key_Then_it_is_rejected`).
+- **Comment déconnecter un utilisateur ?** Le front oublie le jeton. Côté serveur, un JWT reste valable jusqu'à son expiration (60 minutes) : c'est la limite acceptée du MVP. Une révocation demanderait une liste de jetons révoqués ou des jetons courts avec un jeton de rafraîchissement.
+- **Pourquoi PBKDF2 et pas SHA-256 ?** SHA-256 est conçu pour être rapide : un attaquant en teste des milliards par seconde. PBKDF2 répète le calcul 100 000 fois, avec un sel différent par mot de passe : deux mots de passe identiques ont des empreintes différentes, et les tables précalculées sont inutiles.
+- **Comment empêchez-vous de savoir si une adresse a un compte ?** Même erreur pour une adresse inconnue et un mot de passe faux (critère 3). Limite connue : l'inscription, elle, répond `409` pour une adresse prise, comme le demande le critère 2 ; la limitation à 10 appels par minute freine l'énumération.
+- **Pourquoi l'accès est-il refusé par défaut ?** Avec la politique de repli, un endpoint oublié est fermé, pas ouvert : l'erreur la moins grave. Les endpoints publics sont listés explicitement (`AllowAnonymous`), donc faciles à relire.
+- **Pourquoi ne pas vérifier l'unicité de l'adresse avant d'enregistrer ?** Deux inscriptions simultanées passeraient toutes les deux la vérification. L'index unique de PostgreSQL est la seule garantie fiable ; le repository traduit son refus en `409`. C'est la même idée que la contrainte `UNIQUE(ScreeningId, SeatId)` contre la double vente.
+- **Où est la clé de signature ?** Jamais dans le dépôt : user-secrets en développement, Parameter Store (chiffré) en production, injectée en variable d'environnement `Jwt__SigningKey`. Si la clé manque ou fait moins de 32 octets, la première requête qui en a besoin échoue, avec un message explicite dans les journaux.
+
+---
+
 ## Référence – Parcours d'une requête dans le code (US 1.1)
 
 Exemple : le visiteur ouvre la programmation du 18 juillet dans le front Angular, qui appelle `GET /api/schedule?date=2026-07-18`.
@@ -3319,6 +3655,7 @@ docker build -t grandcinema-api:local .                  # construire l'image de
 sudo /opt/grandcinema/run-api.sh <image>                 # chemin A, sur le serveur EC2 : déployer une image
 sudo bash /tmp/deploy.sh <commit>                        # chemin B, sur le serveur EC2 : déployer un commit (script téléchargé au préalable)
 git switch -c feature/us-<n>-<slug> dev               # nouvelle branche de fonctionnalité
+dotnet user-secrets set "Jwt:SigningKey" "$(openssl rand -base64 48)" --project src/GrandCinema.Api   # clé de signature des jetons (développement)
 git push -u origin <branche>                              # publier une branche
 ```
 
@@ -3348,7 +3685,7 @@ git push -u origin <branche>                              # publier une branche
 
 ## Phases suivantes (à compléter)
 
-- Phase 2 : authentification (US 2.1), avec HTTPS avant la mise en ligne (voir l'étape 10j).
+- Phase 2 : authentification (US 2.1) : voir l'étape 12 ; HTTPS et clé de signature à ajouter au déploiement (étape 12i).
 - Phase 3 : places restantes (US 2.2). L'US 1.1 est terminée aux étapes 7 bis à 7 quater.
 - Phase 4 : réservation avec verrouillage et expiration (US 2.3), bug de double réservation, test de reproduction et correctif.
 - Phase 5 : programmation et suivi des réservations (US 5.2, 5.3) ; avant l'US 5.3, rédiger l'ADR de la stratégie de lecture dans le dépôt de documentation (détaillé ci-dessous).
