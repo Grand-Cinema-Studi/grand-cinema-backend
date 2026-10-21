@@ -162,10 +162,6 @@ La double vente d'une place est empêchée en base par une contrainte d'unicité
 
 `main` et `dev` sont protégées : toute modification passe par une Pull Request. Les messages de commit suivent [Conventional Commits](https://www.conventionalcommits.org/fr/). Détail dans [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Journal de construction
-
-[from_scratch.md](from_scratch.md) retrace la construction du backend étape par étape : commandes exactes, raison de chaque choix, et vérifications.
-
 ## Auteur
 
 Slimane Smahi — Bachelor Développeur d'Application, Studi (2026).
