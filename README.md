@@ -44,12 +44,12 @@ La couche Application est rangée par fonctionnalité (`Features/<Fonctionnalit�
 
 | User story | Contenu | État |
 |---|---|---|
-| US 1.1 | Consulter les films et les horaires | ✅ API : `GET /api/schedule` |
-| US 2.1 | Créer un compte et se connecter | ✅ API : `POST /api/users`, `POST /api/tokens`, `GET /api/users/me` |
-| US 2.2 | Voir les places restantes en temps réel | ⬜ À faire |
-| US 2.3 | Réserver un nombre de places et passer au paiement | ⬜ À faire |
-| US 5.2 | Gérer la programmation | ⬜ À faire |
-| US 5.3 | Suivre les réservations | ⬜ À faire |
+| US 1.1 | Consulter les films et les horaires | Fait (API : `GET /api/schedule`) |
+| US 2.1 | Créer un compte et se connecter | Fait (API : `POST /api/users`, `POST /api/tokens`, `GET /api/users/me`) |
+| US 2.2 | Voir les places restantes en temps réel | À faire |
+| US 2.3 | Réserver un nombre de places et passer au paiement | À faire |
+| US 5.2 | Gérer la programmation | À faire |
+| US 5.3 | Suivre les réservations | À faire |
 
 Les user stories, leurs critères d'acceptation, la Definition of Ready et la Definition of Done sont dans le [dépôt de documentation](https://github.com/Grand-Cinema-Studi/grand-cinema-docs) et sur le [Project GitHub](https://github.com/orgs/Grand-Cinema-Studi/projects/3).
 
