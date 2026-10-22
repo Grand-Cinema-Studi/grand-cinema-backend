@@ -3,6 +3,7 @@ using GrandCinema.Application.Features.Movies.Queries;
 using GrandCinema.Domain.Entities;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
+using Shouldly;
 
 namespace GrandCinema.Application.Tests.Features.Movies.Queries;
 
@@ -34,9 +35,30 @@ public class GetMoviesShowingHandlerTests
         var handler = new GetMoviesShowingHandler(_movies.Object, _time);
 
         // Act
-        await handler.Handle(new GetMoviesShowingQuery());
+        var query = new GetMoviesShowingQuery();
+        await handler.Handle(query);
 
         // Assert
         _movies.Verify(r => r.GetMoviesScheduledFromAsync(new DateTime(2026, 7, 18, 12, 0, 0), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    [Trait("US", "1.1")]
+    public async Task When_a_movie_is_scheduled_Then_it_is_returned()
+    {
+        // Arrange
+        var movie = NewMovie("Blue Note");
+        _movies
+            .Setup(r=> r.GetMoviesScheduledFromAsync(It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Movie> { movie });
+        var handler = new GetMoviesShowingHandler(_movies.Object, _time);
+
+        // Act
+        var result = await handler.Handle(new GetMoviesShowingQuery());
+
+        // Assert
+        var dto = result.ShouldHaveSingleItem();
+        dto.MovieId.ShouldBe(movie.Id);
+        dto.Title.ShouldContain("Blue Note");
     }
 }
