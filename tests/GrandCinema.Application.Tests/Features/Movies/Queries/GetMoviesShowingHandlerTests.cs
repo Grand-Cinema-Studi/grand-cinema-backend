@@ -59,7 +59,7 @@ public class GetMoviesShowingHandlerTests
         // Assert
         var dto = result.ShouldHaveSingleItem();
         dto.MovieId.ShouldBe(movie.Id);
-        dto.Title.ShouldContain("Blue Note");
+        dto.Title.ShouldBe("Blue Note");
     }
 
     [Fact]

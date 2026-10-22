@@ -12,7 +12,7 @@ public sealed class GetMoviesShowingHandler : IQueryHandler<GetMoviesShowingQuer
 
     public GetMoviesShowingHandler(IMovieReadRepository movieReadRepository, TimeProvider timeProvider)
     {
-        this._movieReadRepository = movieReadRepository;
+        _movieReadRepository = movieReadRepository;
         _timeProvider = timeProvider;
     }
 

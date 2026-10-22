@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GrandCinema.Infrastructure.Persistence.Repositories;
 
-public class MovieReadRepository : IMovieReadRepository
+public sealed class MovieReadRepository : IMovieReadRepository
 {
     private readonly GrandCinemaDbContext _db;
 
