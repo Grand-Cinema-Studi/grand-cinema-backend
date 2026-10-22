@@ -1,6 +1,7 @@
 using GrandCinema.Application.Abstractions.Cqrs;
 using GrandCinema.Application.Abstractions.Persistence;
 using GrandCinema.Application.Features.Movies.DTOs;
+using GrandCinema.Application.Features.Movies.DTOs.Mappings;
 
 namespace GrandCinema.Application.Features.Movies.Queries;
 
@@ -18,8 +19,10 @@ public sealed class GetMoviesShowingHandler : IQueryHandler<GetMoviesShowingQuer
     public async Task<IReadOnlyList<MovieDto>> Handle(GetMoviesShowingQuery query, CancellationToken cancellationToken = default) 
     {
         var now = _timeProvider.GetLocalNow().DateTime;
-        await _movieReadRepository.GetMoviesScheduledFromAsync(now, cancellationToken);
+        var movies = await _movieReadRepository.GetMoviesScheduledFromAsync(now, cancellationToken);
 
-        return [];
+        return movies
+            .Select(m => m.ToMovieDto())
+            .ToList();
     }
 }
