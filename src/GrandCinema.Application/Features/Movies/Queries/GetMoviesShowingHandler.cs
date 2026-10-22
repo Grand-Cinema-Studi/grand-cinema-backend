@@ -22,6 +22,7 @@ public sealed class GetMoviesShowingHandler : IQueryHandler<GetMoviesShowingQuer
         var movies = await _movieReadRepository.GetMoviesScheduledFromAsync(now, cancellationToken);
 
         return movies
+            .OrderBy(m => m.Title)
             .Select(m => m.ToMovieDto())
             .ToList();
     }
