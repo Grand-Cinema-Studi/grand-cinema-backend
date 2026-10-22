@@ -1,4 +1,4 @@
-namespace GrandCinema.Application.Features.Movies.DTOS;
+namespace GrandCinema.Application.Features.Movies.DTOs;
 
 public class MovieDto
 {

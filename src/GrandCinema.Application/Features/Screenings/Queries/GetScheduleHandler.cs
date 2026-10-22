@@ -2,7 +2,6 @@ using GrandCinema.Application.Abstractions.Cqrs;
 using GrandCinema.Application.Abstractions.Persistence;
 using GrandCinema.Application.Features.Screenings.DTOs;
 using GrandCinema.Application.Features.Screenings.DTOs.Mappings;
-using GrandCinema.Domain.Entities;
 
 namespace GrandCinema.Application.Features.Screenings.Queries;
 

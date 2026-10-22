@@ -9,7 +9,7 @@ namespace GrandCinema.Application.Tests.Features.Movies.Queries;
 public class GetMoviesShowingHandlerTests
 {
     private readonly Mock<IMovieReadRepository> _movies = new();
-    private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 7, 18, 1, 0, 0, TimeSpan.Zero));
+    private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 7, 18, 10, 0, 0, TimeSpan.Zero));
 
     private static Movie NewMovie(string title) => new()
     {
