@@ -61,4 +61,21 @@ public class GetMoviesShowingHandlerTests
         dto.MovieId.ShouldBe(movie.Id);
         dto.Title.ShouldContain("Blue Note");
     }
+
+    [Fact]
+    [Trait("US", "1.1")]
+    public async Task When_several_movies_are_scheduled_Then_they_are_sorted_by_title()
+    {
+        // Arrange
+        _movies
+            .Setup(r => r.GetMoviesScheduledFromAsync(It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Movie> { NewMovie("Zorro"), NewMovie("Blue Note"), NewMovie("Metropolis") });
+        var handler = new GetMoviesShowingHandler(_movies.Object, _time);
+
+        // Act
+        var result = await handler.Handle(new GetMoviesShowingQuery());
+
+        // Assert
+        result.Select(m => m.Title).ShouldBe(new[] { "Blue Note", "Metropolis", "Zorro" });
+    }
 }
