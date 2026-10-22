@@ -19,6 +19,7 @@ public static class DependencyInjection
         services.AddDbContext<GrandCinemaDbContext>(options => options.UseNpgsql(connectionString));
 
         services.AddScoped<IScreeningReadRepository, ScreeningReadRepository>();
+        services.AddScoped<IMovieReadRepository, MovieReadRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
 
         // Read on first use, not at startup: the EF Core design-time tools build the host without any JWT settings.
