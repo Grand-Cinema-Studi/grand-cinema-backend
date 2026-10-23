@@ -19,6 +19,7 @@ RUN ConnectionStrings__Default="Host=placeholder" dotnet ef migrations bundle \
 
 # Runtime stage: only the ASP.NET Core runtime and the published files
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+LABEL org.opencontainers.image.source=https://github.com/Grand-Cinema-Studi/grand-cinema-backend
 WORKDIR /app
 COPY --from=build /app/publish .
 USER $APP_UID

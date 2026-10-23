@@ -1,0 +1,41 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: grandcinemadb
+      POSTGRES_USER: sly
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sly -d grandcinemadb"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    image: ${API_IMAGE:?}
+    entrypoint: ["/app/efbundle"]
+    environment:
+      ConnectionStrings__Default: Host=db;Port=5432;Database=grandcinemadb;Username=sly;Password=${POSTGRES_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    image: ${API_IMAGE:?}
+    restart: unless-stopped
+    environment:
+      ConnectionStrings__Default: Host=db;Port=5432;Database=grandcinemadb;Username=sly;Password=${POSTGRES_PASSWORD}
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:?}
+      Swagger__Enabled: ${SWAGGER_ENABLED:-false}
+      TZ: Europe/Paris
+    ports:
+      - "80:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  db-data:
