@@ -19,8 +19,12 @@ public class GetCurrentUserHandlerTests
         // Arrange
         var lea = new User
         {
-            Id = Guid.NewGuid(), Email = "lea.martin@example.com", PasswordHash = "hashed-password",
-            FirstName = "Léa", LastName = "Martin", Role = UserRole.Customer
+            Id = Guid.NewGuid(),
+            Email = "lea.martin@example.com",
+            PasswordHash = "hashed-password",
+            FirstName = "Léa",
+            LastName = "Martin",
+            Role = UserRole.Customer
         };
         _users.Setup(r => r.GetByIdAsync(lea.Id, It.IsAny<CancellationToken>())).ReturnsAsync(lea);
         var handler = new GetCurrentUserHandler(_users.Object);

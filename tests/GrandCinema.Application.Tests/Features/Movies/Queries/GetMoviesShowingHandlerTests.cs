@@ -49,7 +49,7 @@ public class GetMoviesShowingHandlerTests
         // Arrange
         var movie = NewMovie("Blue Note");
         _movies
-            .Setup(r=> r.GetMoviesScheduledFromAsync(It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetMoviesScheduledFromAsync(It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Movie> { movie });
         var handler = new GetMoviesShowingHandler(_movies.Object, _time);
 

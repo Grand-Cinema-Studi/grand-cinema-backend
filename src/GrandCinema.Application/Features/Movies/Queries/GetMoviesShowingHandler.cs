@@ -16,7 +16,7 @@ public sealed class GetMoviesShowingHandler : IQueryHandler<GetMoviesShowingQuer
         _timeProvider = timeProvider;
     }
 
-    public async Task<IReadOnlyList<MovieDto>> Handle(GetMoviesShowingQuery query, CancellationToken cancellationToken = default) 
+    public async Task<IReadOnlyList<MovieDto>> Handle(GetMoviesShowingQuery query, CancellationToken cancellationToken = default)
     {
         var now = _timeProvider.GetLocalNow().DateTime;
         var movies = await _movieReadRepository.GetMoviesScheduledFromAsync(now, cancellationToken);
