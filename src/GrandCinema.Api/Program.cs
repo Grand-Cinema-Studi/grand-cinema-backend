@@ -13,7 +13,16 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddJwtAuthentication();
 builder.Services.AddAuthenticationRateLimiting();
 builder.Services.AddProblemDetails();
-builder.Services.AddOpenApi(options => options.AddDocumentTransformer<BearerSecuritySchemeTransformer>());
+builder.Services.AddOpenApi(options =>
+{
+    options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
+
+    options.AddDocumentTransformer((document, _, _) =>
+    {
+        document.Servers?.Clear();
+        return Task.CompletedTask;
+    });
+});
 builder.Services.AddHealthChecks();
 
 var app = builder.Build();
