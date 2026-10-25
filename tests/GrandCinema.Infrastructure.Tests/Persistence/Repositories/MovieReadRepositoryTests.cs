@@ -23,8 +23,13 @@ public class MovieReadRepositoryTests : IClassFixture<PostgreSqlFixture>
         var room = new Room { Id = Guid.NewGuid(), Name = "Salle 1", Capacity = 170 };
         Movie NewMovie(string title) => new()
         {
-            Id = Guid.NewGuid(), Title = title, Synopsis = "Synopsis", DurationMinutes = 100,
-            Genre = "Drama", ReleaseDate = new DateOnly(2025, 1, 1), PosterUrl = "https://example.com/p.jpg"
+            Id = Guid.NewGuid(),
+            Title = title,
+            Synopsis = "Synopsis",
+            DurationMinutes = 100,
+            Genre = "Drama",
+            ReleaseDate = new DateOnly(2025, 1, 1),
+            PosterUrl = "https://example.com/p.jpg"
         };
         var endedThisMorning = NewMovie("Ended this morning");
         var startsNow = NewMovie("Starts now");

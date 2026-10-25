@@ -23,7 +23,7 @@ public class GetScheduleHandlerTests
         var startsAt = day.ToDateTime(new TimeOnly(18, 30));
         _screenings
             .Setup(r => r.GetScreeningsAsync(day, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<Screening> {new() { Id = Guid.NewGuid(), Room = room, Movie = movie, StartsAt = startsAt, Price = 9m }});
+            .ReturnsAsync(new List<Screening> { new() { Id = Guid.NewGuid(), Room = room, Movie = movie, StartsAt = startsAt, Price = 9m } });
         var handler = new GetScheduleHandler(_screenings.Object, _time);
 
         // Act
@@ -130,8 +130,13 @@ public class GetScheduleHandlerTests
         var room = new Room { Id = Guid.NewGuid(), Name = "Salle 1", Capacity = 170 };
         Movie NewMovie(string title) => new()
         {
-            Id = Guid.NewGuid(), Title = title, Synopsis = "Synopsis", DurationMinutes = 100,
-            Genre = "Drama", ReleaseDate = new DateOnly(2025, 1, 1), PosterUrl = "https://example.com/p.jpg"
+            Id = Guid.NewGuid(),
+            Title = title,
+            Synopsis = "Synopsis",
+            DurationMinutes = 100,
+            Genre = "Drama",
+            ReleaseDate = new DateOnly(2025, 1, 1),
+            PosterUrl = "https://example.com/p.jpg"
         };
         var startsAt = day.ToDateTime(new TimeOnly(20, 0));
         _screenings
