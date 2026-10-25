@@ -50,15 +50,31 @@ async function findMovie(title, year) {
 
 const sqlText = (value) => `'${String(value).replaceAll("'", "''")}'`;
 
+// A movie line of seed-dev.sql: ('<id>', '<title>', ...), -- tmdb: <original title> (<year>)
+// Parsed in two short anchored steps rather than one regular expression spanning the whole line:
+// two wildcards in the same pattern backtrack in quadratic time on a long line.
+const TMDB_TAG = '-- tmdb: ';
+const movieStart = /^\s*\('([0-9a-f-]{36})', '((?:[^']|'')*)',/;
+const tagYear = /\((\d{4})\)$/;
+
+function parseMovieLine(line) {
+  const tagIndex = line.lastIndexOf(TMDB_TAG);
+  if (tagIndex === -1) return undefined;
+  const start = movieStart.exec(line);
+  const tag = line.slice(tagIndex + TMDB_TAG.length).trim();
+  const year = tagYear.exec(tag);
+  if (!start || !year) return undefined;
+  return {
+    id: start[1],
+    title: start[2].replaceAll("''", "'"),
+    original: tag.slice(0, year.index).trim(),
+    year: Number(year[1]),
+  };
+}
+
 try {
 const seed = await readFile(seedUrl, 'utf8');
-const movieLine = /^\s*\('([0-9a-f-]{36})', '((?:[^']|'')*)',.*-- tmdb: (.+) \((\d{4})\)\s*$/gm;
-const movies = [...seed.matchAll(movieLine)].map(([, id, title, original, year]) => ({
-  id,
-  title: title.replaceAll("''", "'"),
-  original,
-  year: Number(year),
-}));
+const movies = seed.split('\n').map(parseMovieLine).filter((movie) => movie !== undefined);
 if (movies.length === 0) throw new Error('No movie line found in seed-dev.sql.');
 
 const updates = [];
