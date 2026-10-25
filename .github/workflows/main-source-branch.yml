@@ -1,0 +1,28 @@
+name: Main source branch
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited] # edited: the target branch of a pull request can be changed
+
+permissions: {}
+
+jobs:
+  check-source-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Only dev or a hotfix branch of this repository can be merged into main
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          if [[ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ]]; then
+            echo "::error::Pull requests into main must come from this repository, not from $HEAD_REPO."
+            exit 1
+          fi
+          if [[ "$HEAD_REF" == "dev" || "$HEAD_REF" == hotfix/* ]]; then
+            echo "Source branch $HEAD_REF is allowed into main."
+          else
+            echo "::error::Only dev or a hotfix/* branch can be merged into main, not $HEAD_REF."
+            exit 1
+          fi
