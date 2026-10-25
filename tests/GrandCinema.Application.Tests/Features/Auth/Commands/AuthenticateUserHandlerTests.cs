@@ -102,7 +102,7 @@ public class AuthenticateUserHandlerTests
         result.IsSuccess.ShouldBeTrue();
     }
 
-        [Theory]
+    [Theory]
     [Trait("US", "2.1")]
     [InlineData("", Password)]
     [InlineData("   ", Password)]

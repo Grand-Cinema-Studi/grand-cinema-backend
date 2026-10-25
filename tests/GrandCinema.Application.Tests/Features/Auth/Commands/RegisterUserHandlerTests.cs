@@ -139,7 +139,7 @@ public class RegisterUserHandlerTests
         _users.Verify(r => r.TryAddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-        public static TheoryData<string, RegisterUserCommand> CommandsWithOneInvalidField => new()
+    public static TheoryData<string, RegisterUserCommand> CommandsWithOneInvalidField => new()
     {
         { "email", new RegisterUserCommand(new string('a', 245) + "@example.com", Password, "Léa", "Martin") }, // 257 characters
         { "password", new RegisterUserCommand("lea.martin@example.com", new string('p', 129), "Léa", "Martin") },
