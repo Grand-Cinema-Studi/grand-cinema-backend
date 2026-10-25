@@ -30,6 +30,10 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      - run: dotnet restore
+      # Before the SonarCloud analysis: dotnet format must only check the rules of the project, not the analysers added by the scanner
+      - run: dotnet format --verify-no-changes --no-restore
+
       - name: Install the SonarScanner for .NET
         run: dotnet tool install --global dotnet-sonarscanner
 
@@ -44,11 +48,9 @@ jobs:
           /d:sonar.token="$SONAR_TOKEN"
           /d:sonar.qualitygate.wait=true
           /d:sonar.cs.opencover.reportsPaths="TestResults/**/coverage.opencover.xml"
-          /d:sonar.exclusions="**/Migrations/**"
+          /d:sonar.exclusions="**/Migrations/**" # Before the SonarCloud analysis: dotnet format must only check the rules of the project, not the analysers added by the scanner
           /d:sonar.coverage.exclusions="**/Program.cs,**/Migrations/**,**/Persistence/Configurations/**,**/DependencyInjection.cs"
 
-      - run: dotnet restore
-      - run: dotnet format --verify-no-changes --no-restore
       - run: dotnet build --no-restore --configuration Release
       - run: dotnet test --no-build --configuration Release --collect:"XPlat Code Coverage;Format=opencover" --results-directory TestResults
 
