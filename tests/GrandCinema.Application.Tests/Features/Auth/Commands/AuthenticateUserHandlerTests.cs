@@ -101,4 +101,24 @@ public class AuthenticateUserHandlerTests
         // Assert
         result.IsSuccess.ShouldBeTrue();
     }
+
+        [Theory]
+    [Trait("US", "2.1")]
+    [InlineData("", Password)]
+    [InlineData("   ", Password)]
+    [InlineData("lea.martin@example.com", "")]
+    public async Task When_the_email_or_the_password_is_empty_Then_the_login_is_refused_without_querying_the_accounts(string email, string password)
+    {
+        // Arrange
+        var handler = CreateHandler();
+
+        // Act
+        var result = await handler.Handle(new AuthenticateUserCommand(email, password));
+
+        // Assert
+        result.IsFailure.ShouldBeTrue();
+        result.Error.ShouldBe(AuthErrors.InvalidCredentials);
+        _users.Verify(r => r.GetByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _passwordHasher.Verify(h => h.Verify(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
 }
