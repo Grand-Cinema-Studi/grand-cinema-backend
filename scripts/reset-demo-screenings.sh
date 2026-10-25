@@ -15,7 +15,7 @@ env_value() {
 DB_USER=$(env_value POSTGRES_USER)
 DB_NAME=$(env_value POSTGRES_DB)
 
-if [ -z "$(docker compose ps --quiet --status running db)" ]; then
+if [[ -z "$(docker compose ps --quiet --status running db)" ]]; then
     echo "PostgreSQL is not running: start it with 'docker compose up -d'." >&2
     exit 1
 fi
@@ -26,12 +26,12 @@ DELETE FROM "Reservations" WHERE "ScreeningId"::text LIKE '33333333-%';
 DELETE FROM "Screenings" WHERE "Id"::text LIKE '33333333-%';
 SQL
     cat docs/database/seed-dev.sql
-    if [ -f docs/database/seed-posters.sql ]; then
+    if [[ -f docs/database/seed-posters.sql ]]; then
         cat docs/database/seed-posters.sql
     fi
 } | docker compose exec -T db psql --quiet --single-transaction -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME"
 
 echo "Demo screenings reset from today ($(date +%F)) for the coming weeks."
-if [ ! -f docs/database/seed-posters.sql ]; then
-    echo "No posters yet: run TMDB_TOKEN=<token> node scripts/fetch-tmdb-posters.mjs, then this script again."
+if [[ ! -f docs/database/seed-posters.sql ]]; then
+    echo "No posters yet: put TMDB_TOKEN=<token> in .env, run node --env-file=.env scripts/fetch-tmdb-posters.mjs, then this script again."
 fi

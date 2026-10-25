@@ -1,0 +1,5 @@
+root = true
+
+# Tests: the expected values stay next to the assertion. A static readonly field would only save one array per test run.
+[tests/**.cs]
+dotnet_diagnostic.CA1861.severity = none

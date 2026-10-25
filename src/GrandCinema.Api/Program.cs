@@ -63,4 +63,4 @@ app.MapCurrentUserEndpoints();
 
 app.MapGet("/", () => "Grand Cinema Api").AllowAnonymous();
 
-app.Run();
+await app.RunAsync();

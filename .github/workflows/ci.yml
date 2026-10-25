@@ -48,7 +48,7 @@ jobs:
           /d:sonar.token="$SONAR_TOKEN"
           /d:sonar.qualitygate.wait=true
           /d:sonar.cs.opencover.reportsPaths="TestResults/**/coverage.opencover.xml"
-          /d:sonar.exclusions="**/Migrations/**" # Before the SonarCloud analysis: dotnet format must only check the rules of the project, not the analysers added by the scanner
+          /d:sonar.exclusions="**/Migrations/**,**/*.sql"
           /d:sonar.coverage.exclusions="**/Program.cs,**/Migrations/**,**/Persistence/Configurations/**,**/DependencyInjection.cs"
 
       - run: dotnet build --no-restore --configuration Release

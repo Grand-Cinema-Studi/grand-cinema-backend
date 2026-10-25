@@ -16,7 +16,7 @@ parameter() {
 mkdir -p "$APP_DIR"
 cd "$APP_DIR"
 
-curl -fsSL "$RAW_URL/docker-compose.prod.yml" -o docker-compose.yml
+curl --proto '=https' --tlsv1.2 -fsSL "$RAW_URL/docker-compose.prod.yml" -o docker-compose.yml
 
 umask 077
 cat > .env <<EOF
