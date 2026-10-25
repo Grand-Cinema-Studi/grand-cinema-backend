@@ -483,6 +483,3 @@ $RECYCLE.BIN/
 
 # from scratch files
 from_scratch.md
-
-# scripts
-fetch-tmdb-posters.mjs
