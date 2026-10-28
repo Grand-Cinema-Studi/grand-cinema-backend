@@ -25,7 +25,7 @@ public class RegisterUserEndpointsTests
         using var client = _api.CreateVisitorClient();
 
         // Act: the address is typed with capitals and spaces
-        var response = await client.PostAsJsonAsync("/api/users", new { email = $" {email.ToUpperInvariant()} ", password = GrandCinemaApiFactory.Password, firstName = "Léa", lastName = "Martin" });
+        var response = await client.PostAsJsonAsync("/api/users", new { email = $" {email.ToUpperInvariant()} ", password = GrandCinemaApiFactory.Password, firstName = "Léa", lastName = "Martin", acceptPrivacyPolicy = true });
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -46,7 +46,7 @@ public class RegisterUserEndpointsTests
         using var client = _api.CreateVisitorClient();
 
         // Act
-        var response = await client.PostAsJsonAsync("/api/users", new { email = "not-an-email", password = "too-short", firstName = "Léa", lastName = "Martin" });
+        var response = await client.PostAsJsonAsync("/api/users", new { email = "not-an-email", password = "too-short", firstName = "Léa", lastName = "Martin", acceptPrivacyPolicy = true });
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
@@ -67,7 +67,7 @@ public class RegisterUserEndpointsTests
         await GrandCinemaApiFactory.RegisterCustomerAsync(client, email);
 
         // Act
-        var response = await client.PostAsJsonAsync("/api/users", new { email = email.ToUpperInvariant(), password = GrandCinemaApiFactory.Password, firstName = "Léo", lastName = "Durand" });
+        var response = await client.PostAsJsonAsync("/api/users", new { email = email.ToUpperInvariant(), password = GrandCinemaApiFactory.Password, firstName = "Léo", lastName = "Durand", acceptPrivacyPolicy = true });
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.Conflict);

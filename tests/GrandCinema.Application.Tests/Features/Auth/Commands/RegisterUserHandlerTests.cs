@@ -44,7 +44,7 @@ public class RegisterUserHandlerTests
         var handler = CreateHandler();
 
         // Act
-        var result = await handler.Handle(new RegisterUserCommand("lea.martin@example.com", Password, "Léa", "Martin"));
+        var result = await handler.Handle(new RegisterUserCommand("lea.martin@example.com", Password, "Léa", "Martin", true));
 
         // Assert
         result.IsSuccess.ShouldBeTrue();
@@ -61,7 +61,7 @@ public class RegisterUserHandlerTests
         var handler = CreateHandler();
 
         // Act
-        await handler.Handle(new RegisterUserCommand("lea.martin@example.com", Password, "Léa", "Martin"));
+        await handler.Handle(new RegisterUserCommand("lea.martin@example.com", Password, "Léa", "Martin", true));
 
         // Assert
         _savedUser.ShouldNotBeNull();
@@ -80,7 +80,7 @@ public class RegisterUserHandlerTests
         var handler = CreateHandler();
 
         // Act
-        var result = await handler.Handle(new RegisterUserCommand("lea.martin@example.com", Password, "Léa", "Martin"));
+        var result = await handler.Handle(new RegisterUserCommand("lea.martin@example.com", Password, "Léa", "Martin", true));
 
         // Assert
         result.IsFailure.ShouldBeTrue();
@@ -96,7 +96,7 @@ public class RegisterUserHandlerTests
         var handler = CreateHandler();
 
         // Act
-        await handler.Handle(new RegisterUserCommand("lea.martin@example.com", Password, "Léa", "Martin"));
+        await handler.Handle(new RegisterUserCommand("lea.martin@example.com", Password, "Léa", "Martin", true));
 
         // Assert
         _passwordHasher.Verify(h => h.Hash(Password), Times.Once);
@@ -113,7 +113,7 @@ public class RegisterUserHandlerTests
         var handler = CreateHandler();
 
         // Act
-        await handler.Handle(new RegisterUserCommand("  Lea.Martin@Example.COM ", Password, "Léa", "Martin"));
+        await handler.Handle(new RegisterUserCommand("  Lea.Martin@Example.COM ", Password, "Léa", "Martin", true));
 
         // Assert
         _savedUser.ShouldNotBeNull();
@@ -128,7 +128,7 @@ public class RegisterUserHandlerTests
         var handler = CreateHandler();
 
         // Act
-        var result = await handler.Handle(new RegisterUserCommand("not-an-email", "too-short", " ", "Martin"));
+        var result = await handler.Handle(new RegisterUserCommand("not-an-email", "too-short", " ", "Martin", true));
 
         // Assert
         result.IsFailure.ShouldBeTrue();
@@ -159,7 +159,7 @@ public class RegisterUserHandlerTests
         var handler = CreateHandler();
 
         // Act
-        var result = await handler.Handle(new RegisterUserCommand(email, password, firstName, lastName));
+        var result = await handler.Handle(new RegisterUserCommand(email, password, firstName, lastName, true));
 
         // Assert
         result.IsFailure.ShouldBeTrue();
@@ -180,7 +180,8 @@ public class RegisterUserHandlerTests
             new string('a', 244) + "@example.com", // 256 characters
             new string('p', RegisterUserHandler.MaximumPasswordLength),
             new string('L', 100),
-            new string('M', 100));
+            new string('M', 100),
+            true);
 
         // Act
         var result = await handler.Handle(command);
