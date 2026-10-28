@@ -255,7 +255,7 @@ namespace GrandCinema.Infrastructure.Persistence.Migrations
                     b.HasOne("GrandCinema.Domain.Entities.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Screening");
 
