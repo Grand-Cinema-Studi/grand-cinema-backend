@@ -139,7 +139,7 @@ public class RegisterUserHandlerTests
         _users.Verify(r => r.TryAddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    // Plain strings, not a RegisterUserCommand Test Explorer can then list each case as its own test (xUnit1045)
+    // Plain strings, not a RegisterUserCommand : Test Explorer can then list each case as its own test (xUnit1045)
     public static TheoryData<string, string, string, string, string> CommandsWithOneInvalidField => new()
     {
         // invalid field, email, password, first name, last name
@@ -189,5 +189,39 @@ public class RegisterUserHandlerTests
         // Assert
         result.IsSuccess.ShouldBeTrue();
         _users.Verify(r => r.TryAddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    [Trait("US", "2.1")]
+    public async Task When_the_privacy_policy_is_not_accepted_Then_the_account_creation_is_refused()
+    {
+        // Arrange
+        var handler = CreateHandler();
+
+        // Act
+        var result = await handler.Handle(new RegisterUserCommand("lea.martin@example.com", Password, "Léa", "Martin", false));
+
+        // Assert
+        result.IsFailure.ShouldBeTrue();
+        result.Error.ShouldNotBeNull();
+        result.Error.ValidationErrors.ShouldNotBeNull();
+        result.Error.ValidationErrors.Keys.ShouldBe(["acceptPrivacyPolicy"]);
+        _users.Verify(r => r.TryAddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    [Trait("US", "2.1")]
+    public async Task When_an_account_is_created_Then_the_date_and_the_version_of_the_accepted_privacy_policy_are_recorded()
+    {
+        // Arrange
+        var handler = CreateHandler();
+
+        // Act
+        await handler.Handle(new RegisterUserCommand("lea.martin@example.com", Password, "Léa", "Martin", true));
+
+        // Assert
+        _savedUser.ShouldNotBeNull();
+        _savedUser.PrivacyPolicyAcceptedAt.ShouldBe(new DateTime(2026, 7, 18, 10, 0, 0, DateTimeKind.Utc));
+        _savedUser.PrivacyPolicyVersion.ShouldBe(PrivacyPolicy.CurrentVersion);
     }
 }
