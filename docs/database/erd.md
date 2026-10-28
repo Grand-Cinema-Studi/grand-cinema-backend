@@ -1,10 +1,10 @@
 # Schéma entité-relation – Grand Cinema
 
-Schéma de la base PostgreSQL, tel que créé par les migrations `InitialSchema` et `AddScreeningStartsAtIndex`. Le script SQL correspondant est [schema.sql](schema.sql).
+Schéma de la base PostgreSQL, tel que créé par les migrations `InitialSchema`, `AddScreeningStartsAtIndex`, `AddPrivacyPolicyAcceptance`, `AllowReservationsWithoutAccount` et `DetachReservationsOfDeletedAccounts`. Le script SQL correspondant est [schema.sql](schema.sql).
 
 ```mermaid
 erDiagram
-    Users ||--o{ Reservations : "fait"
+    Users |o--o{ Reservations : "fait"
     Screenings ||--o{ Reservations : "concerne"
     Movies ||--o{ Screenings : "est projeté"
     Rooms ||--o{ Screenings : "accueille"
@@ -21,6 +21,8 @@ erDiagram
         varchar LastName "100"
         varchar Role "Customer, Cashier, TicketInspector, Manager"
         timestamptz CreatedAt "UTC"
+        timestamptz PrivacyPolicyAcceptedAt "UTC, nullable"
+        varchar PrivacyPolicyVersion "20, nullable"
     }
     Movies {
         uuid Id PK
@@ -51,7 +53,7 @@ erDiagram
     }
     Reservations {
         uuid Id PK
-        uuid UserId FK
+        uuid UserId FK "nullable : compte supprimé"
         uuid ScreeningId FK
         varchar Status "PendingPayment, Confirmed, Expired, Cancelled"
         timestamptz CreatedAt "UTC"
@@ -101,7 +103,10 @@ L'index composite `(RoomId, StartsAt)` ne sert pas pour une recherche sur `Start
 
 ## Suppressions
 
-Toutes les clés étrangères sont en `RESTRICT` : on ne peut pas supprimer un film, une salle, une place, une séance ou un utilisateur encore référencé. Seule exception : `ReservedSeats → Reservations` est en `CASCADE`, car supprimer une réservation libère ses places.
+Les clés étrangères sont en `RESTRICT` : on ne peut pas supprimer un film, une salle, une place ou une séance encore référencés. Deux exceptions :
+
+- `ReservedSeats → Reservations` est en `CASCADE` : supprimer une réservation libère ses places ;
+- `Reservations → Users` est en `SET NULL` : supprimer un compte (droit à l'effacement, RGPD) garde ses réservations, exigées par la comptabilité (10 ans), sans plus aucun lien avec la personne. PostgreSQL détache les réservations dans la même instruction que la suppression du compte ; avant ce choix (migration `DetachReservationsOfDeletedAccounts`), la base refusait la suppression d'un client ayant réservé.
 
 À l'expiration ou à l'annulation, les lignes de `ReservedSeats` sont supprimées pour libérer les places, et la réservation garde son statut (`Expired`, `Cancelled`) pour l'historique.
 
@@ -115,5 +120,5 @@ Toutes les clés étrangères sont en `RESTRICT` : on ne peut pas supprimer un f
 ## Dates
 
 - `StartsAt` est en `timestamp without time zone` : c'est l'heure affichée au cinéma (18 h 30 à Paris), sans conversion.
-- `CreatedAt` et `ExpiresAt` sont en `timestamp with time zone` et toujours écrits en UTC : ce sont des instants techniques.
+- `CreatedAt`, `ExpiresAt` et `PrivacyPolicyAcceptedAt` sont en `timestamp with time zone` et toujours écrits en UTC : ce sont des instants techniques.
 - `ReleaseDate` est en `date` : seul le jour compte.

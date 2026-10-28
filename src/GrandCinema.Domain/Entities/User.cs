@@ -11,4 +11,6 @@ public class User
     public required string LastName { get; set; }
     public DateTime CreatedAt { get; set; }
     public UserRole Role { get; set; }
+    public DateTime? PrivacyPolicyAcceptedAt { get; set; }
+    public string? PrivacyPolicyVersion { get; set; }
 }

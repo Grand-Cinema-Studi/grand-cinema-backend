@@ -1,6 +1,7 @@
 using GrandCinema.Domain.Entities;
 using GrandCinema.Domain.Enums;
 using GrandCinema.Infrastructure.Persistence.Repositories;
+using Microsoft.EntityFrameworkCore;
 using Shouldly;
 
 namespace GrandCinema.Infrastructure.Tests.Persistence.Repositories;
@@ -71,5 +72,74 @@ public class UserRepositoryTests : IClassFixture<PostgreSqlFixture>
 
         // Assert
         added.ShouldBeFalse();
+    }
+
+    [Fact]
+    [Trait("US", "2.1")]
+    [Trait("Category", "Integration")]
+    public async Task When_a_user_is_deleted_Then_they_can_no_longer_be_found()
+    {
+        // Arrange
+        var user = NewUser($"{Guid.NewGuid()}@example.com");
+        await using (var db = _database.CreateDbContext())
+        {
+            await new UserRepository(db).TryAddAsync(user);
+        }
+
+        await using var deleteDb = _database.CreateDbContext();
+        var repository = new UserRepository(deleteDb);
+
+        // Act
+        var deleted = await repository.DeleteAsync(user.Id);
+
+        // Assert
+        deleted.ShouldBeTrue();
+        (await repository.GetByIdAsync(user.Id)).ShouldBeNull();
+    }
+
+    [Fact]
+    [Trait("US", "2.1")]
+    [Trait("Category", "Integration")]
+    public async Task When_the_user_does_not_exist_Then_nothing_is_deleted()
+    {
+        // Arrange
+        await using var db = _database.CreateDbContext();
+        var repository = new UserRepository(db);
+
+        // Act
+        var deleted = await repository.DeleteAsync(Guid.NewGuid());
+
+        // Assert
+        deleted.ShouldBeFalse();
+    }
+
+    [Fact]
+    [Trait("US", "2.1")]
+    [Trait("Category", "Integration")]
+    public async Task When_a_user_with_a_reservation_is_deleted_Then_the_reservation_is_kept_without_any_link_to_them()
+    {
+        // Arrange: a paid reservation, which must be kept for accounting
+        var user = NewUser($"{Guid.NewGuid()}@example.com");
+        var room = new Room { Id = Guid.NewGuid(), Name = $"Room {Guid.NewGuid():N}", Capacity = 100 };
+        var movie = new Movie { Id = Guid.NewGuid(), Title = "Kept reservation", Synopsis = "Synopsis", DurationMinutes = 100, Genre = "Drama", ReleaseDate = new DateOnly(2025, 1, 1), PosterUrl = "https://example.com/poster.jpg" };
+        var screening = new Screening { Id = Guid.NewGuid(), Movie = movie, Room = room, StartsAt = new DateTime(2026, 7, 18, 20, 0, 0, DateTimeKind.Unspecified), Price = 9m };
+        var reservation = new Reservation { Id = Guid.NewGuid(), User = user, Screening = screening, Status = ReservationStatus.Confirmed, CreatedAt = DateTime.UtcNow, TotalAmount = 18m };
+        await using (var seed = _database.CreateDbContext())
+        {
+            seed.Reservations.Add(reservation);
+            await seed.SaveChangesAsync();
+        }
+
+        // Act
+        await using (var db = _database.CreateDbContext())
+        {
+            (await new UserRepository(db).DeleteAsync(user.Id)).ShouldBeTrue();
+        }
+
+        // Assert
+        await using var readDb = _database.CreateDbContext();
+        var kept = await readDb.Reservations.SingleAsync(r => r.Id == reservation.Id);
+        kept.UserId.ShouldBeNull();
+        kept.TotalAmount.ShouldBe(18m);
     }
 }

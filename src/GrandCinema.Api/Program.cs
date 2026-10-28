@@ -60,6 +60,7 @@ app.MapMoviesShowingEndpoints();
 app.MapRegisterUserEndpoints();
 app.MapAuthenticateUserEndpoints();
 app.MapCurrentUserEndpoints();
+app.MapDeleteCurrentUserEndpoints();
 
 app.MapGet("/", () => "Grand Cinema Api").AllowAnonymous();
 

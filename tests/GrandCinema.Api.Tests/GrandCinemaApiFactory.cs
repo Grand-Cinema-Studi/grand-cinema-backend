@@ -46,7 +46,7 @@ public sealed class GrandCinemaApiFactory : WebApplicationFactory<Program>, IAsy
     // Creates a customer account through the API, as the front does, and returns its access token.
     public static async Task<string> RegisterCustomerAsync(HttpClient client, string email)
     {
-        var response = await client.PostAsJsonAsync("/api/users", new { email, password = Password, firstName = "Léa", lastName = "Martin" });
+        var response = await client.PostAsJsonAsync("/api/users", new { email, password = Password, firstName = "Léa", lastName = "Martin", acceptPrivacyPolicy = true });
         response.EnsureSuccessStatusCode();
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         return body.GetProperty("accessToken").GetString()!;

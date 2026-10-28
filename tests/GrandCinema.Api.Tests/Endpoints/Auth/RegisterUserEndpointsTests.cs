@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using GrandCinema.Application.Features.Auth;
+using Microsoft.EntityFrameworkCore;
 using Shouldly;
 
 namespace GrandCinema.Api.Tests.Endpoints.Auth;
@@ -25,7 +27,7 @@ public class RegisterUserEndpointsTests
         using var client = _api.CreateVisitorClient();
 
         // Act: the address is typed with capitals and spaces
-        var response = await client.PostAsJsonAsync("/api/users", new { email = $" {email.ToUpperInvariant()} ", password = GrandCinemaApiFactory.Password, firstName = "Léa", lastName = "Martin" });
+        var response = await client.PostAsJsonAsync("/api/users", new { email = $" {email.ToUpperInvariant()} ", password = GrandCinemaApiFactory.Password, firstName = "Léa", lastName = "Martin", acceptPrivacyPolicy = true });
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -35,6 +37,12 @@ public class RegisterUserEndpointsTests
         var user = body.GetProperty("user");
         user.GetProperty("email").GetString().ShouldBe(email);
         user.GetProperty("role").GetString().ShouldBe("Customer");
+
+        // The acceptance is stored with the account: it can be shown on request (GDPR accountability)
+        await using var db = _api.CreateDbContext();
+        var saved = await db.Users.SingleAsync(u => u.Email == email);
+        saved.PrivacyPolicyAcceptedAt.ShouldNotBeNull();
+        saved.PrivacyPolicyVersion.ShouldBe(PrivacyPolicy.CurrentVersion);
     }
 
     [Fact]
@@ -46,7 +54,7 @@ public class RegisterUserEndpointsTests
         using var client = _api.CreateVisitorClient();
 
         // Act
-        var response = await client.PostAsJsonAsync("/api/users", new { email = "not-an-email", password = "too-short", firstName = "Léa", lastName = "Martin" });
+        var response = await client.PostAsJsonAsync("/api/users", new { email = "not-an-email", password = "too-short", firstName = "Léa", lastName = "Martin", acceptPrivacyPolicy = true });
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
@@ -67,11 +75,31 @@ public class RegisterUserEndpointsTests
         await GrandCinemaApiFactory.RegisterCustomerAsync(client, email);
 
         // Act
-        var response = await client.PostAsJsonAsync("/api/users", new { email = email.ToUpperInvariant(), password = GrandCinemaApiFactory.Password, firstName = "Léo", lastName = "Durand" });
+        var response = await client.PostAsJsonAsync("/api/users", new { email = email.ToUpperInvariant(), password = GrandCinemaApiFactory.Password, firstName = "Léo", lastName = "Durand", acceptPrivacyPolicy = true });
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
         var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
         problem.GetProperty("type").GetString().ShouldBe("/errors/email-already-used");
+    }
+
+    [Fact]
+    [Trait("US", "2.1")]
+    [Trait("Category", "Integration")]
+    public async Task When_the_privacy_policy_is_not_accepted_Then_400_naming_this_field_and_no_account_is_created()
+    {
+        // Arrange
+        var email = GrandCinemaApiFactory.NewEmail();
+        using var client = _api.CreateVisitorClient();
+
+        // Act: a client that ignores the box, or calls the API directly, does not send acceptPrivacyPolicy
+        var response = await client.PostAsJsonAsync("/api/users", new { email, password = GrandCinemaApiFactory.Password, firstName = "Léa", lastName = "Martin" });
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        problem.GetProperty("errors").EnumerateObject().Select(field => field.Name).ShouldBe(new[] { "acceptPrivacyPolicy" });
+        var signIn = await client.PostAsJsonAsync("/api/tokens", new { email, password = GrandCinemaApiFactory.Password });
+        signIn.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 }

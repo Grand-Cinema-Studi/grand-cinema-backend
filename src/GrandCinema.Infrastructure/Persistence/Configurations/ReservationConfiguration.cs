@@ -13,7 +13,7 @@ public sealed class ReservationConfiguration : IEntityTypeConfiguration<Reservat
         builder.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
         builder.Property(r => r.TotalAmount).HasPrecision(10, 2);
 
-        builder.HasOne(r => r.User).WithMany().HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(r => r.User).WithMany().HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.SetNull);
         builder.HasOne(r => r.Screening).WithMany().HasForeignKey(r => r.ScreeningId).OnDelete(DeleteBehavior.Restrict);
     }
 }

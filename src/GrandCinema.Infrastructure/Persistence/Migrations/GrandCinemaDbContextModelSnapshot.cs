@@ -82,7 +82,7 @@ namespace GrandCinema.Infrastructure.Persistence.Migrations
                         .HasPrecision(10, 2)
                         .HasColumnType("numeric(10,2)");
 
-                    b.Property<Guid>("UserId")
+                    b.Property<Guid?>("UserId")
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
@@ -224,6 +224,13 @@ namespace GrandCinema.Infrastructure.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
+                    b.Property<DateTime?>("PrivacyPolicyAcceptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PrivacyPolicyVersion")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<string>("Role")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -248,8 +255,7 @@ namespace GrandCinema.Infrastructure.Persistence.Migrations
                     b.HasOne("GrandCinema.Domain.Entities.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Screening");
 
