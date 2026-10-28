@@ -18,7 +18,7 @@ internal sealed class BearerSecuritySchemeTransformer : IOpenApiDocumentTransfor
             Type = SecuritySchemeType.Http,
             Scheme = "bearer",
             BearerFormat = "JWT",
-            Description = "Access token returned by POST /api/users or POST /api/tokens."
+            Description = "Token returned by POST /api/users or POST /api/tokens. No need to put Bearer in front of the token: Swagger adds it himself."
         };
 
         document.Security ??= new List<OpenApiSecurityRequirement>();
