@@ -45,4 +45,7 @@ public sealed class UserRepository : IUserRepository
             .AsNoTracking()
             .SingleOrDefaultAsync(u => u.Id == id, cancellationToken);
     }
+
+    public Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default) =>
+        throw new NotImplementedException();
 }

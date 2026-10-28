@@ -10,4 +10,7 @@ public interface IUserRepository
     Task<User?> GetByEmailAsync(string email, CancellationToken cancellationToken = default);
 
     Task<User?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>Deletes the account. Returns false if it does not exist. Its reservations are kept, without any link to it.</summary>
+    Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default);
 }
