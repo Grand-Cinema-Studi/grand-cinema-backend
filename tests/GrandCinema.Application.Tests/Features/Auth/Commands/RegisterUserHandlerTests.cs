@@ -139,25 +139,27 @@ public class RegisterUserHandlerTests
         _users.Verify(r => r.TryAddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    public static TheoryData<string, RegisterUserCommand> CommandsWithOneInvalidField => new()
+    // Plain strings, not a RegisterUserCommand Test Explorer can then list each case as its own test (xUnit1045)
+    public static TheoryData<string, string, string, string, string> CommandsWithOneInvalidField => new()
     {
-        { "email", new RegisterUserCommand(new string('a', 245) + "@example.com", Password, "Léa", "Martin") }, // 257 characters
-        { "password", new RegisterUserCommand("lea.martin@example.com", new string('p', 129), "Léa", "Martin") },
-        { "firstName", new RegisterUserCommand("lea.martin@example.com", Password, new string('L', 101), "Martin") },
-        { "lastName", new RegisterUserCommand("lea.martin@example.com", Password, "Léa", new string('M', 101)) },
-        { "lastName", new RegisterUserCommand("lea.martin@example.com", Password, "Léa", "   ") },
+        // invalid field, email, password, first name, last name
+        { "email", new string('a', 245) + "@example.com", Password, "Léa", "Martin" }, // 257 characters
+        { "password", "lea.martin@example.com", new string('p', 129), "Léa", "Martin" },
+        { "firstName", "lea.martin@example.com", Password, new string('L', 101), "Martin" },
+        { "lastName", "lea.martin@example.com", Password, "Léa", new string('M', 101) },
+        { "lastName", "lea.martin@example.com", Password, "Léa", "   " },
     };
 
     [Theory]
     [Trait("US", "2.1")]
     [MemberData(nameof(CommandsWithOneInvalidField))]
-    public async Task When_one_field_is_missing_or_too_long_Then_the_account_creation_is_refused_for_this_field_only(string invalidField, RegisterUserCommand command)
+    public async Task When_one_field_is_missing_or_too_long_Then_the_account_creation_is_refused_for_this_field_only(string invalidField, string email, string password, string firstName, string lastName)
     {
         // Arrange
         var handler = CreateHandler();
 
         // Act
-        var result = await handler.Handle(command);
+        var result = await handler.Handle(new RegisterUserCommand(email, password, firstName, lastName));
 
         // Assert
         result.IsFailure.ShouldBeTrue();
