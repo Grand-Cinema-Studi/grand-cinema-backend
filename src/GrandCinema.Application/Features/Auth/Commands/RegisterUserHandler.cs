@@ -43,6 +43,8 @@ public sealed class RegisterUserHandler : ICommandHandler<RegisterUserCommand, R
             return Error.Validation(validationErrors);
         }
 
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
+
         var user = new User
         {
             Id = Guid.NewGuid(),
@@ -50,9 +52,11 @@ public sealed class RegisterUserHandler : ICommandHandler<RegisterUserCommand, R
             PasswordHash = _passwordHasher.Hash(command.Password),
             FirstName = command.FirstName.Trim(),
             LastName = command.LastName.Trim(),
-            CreatedAt = _timeProvider.GetUtcNow().UtcDateTime,
+            CreatedAt = now,
             // Public sign-up always creates a customer: staff roles are never obtained by registering.
-            Role = UserRole.Customer
+            Role = UserRole.Customer,
+            PrivacyPolicyAcceptedAt = now,
+            PrivacyPolicyVersion = PrivacyPolicy.CurrentVersion
         };
 
         if (!await _userRepository.TryAddAsync(user, cancellationToken))
@@ -89,6 +93,12 @@ public sealed class RegisterUserHandler : ICommandHandler<RegisterUserCommand, R
         if (string.IsNullOrWhiteSpace(command.LastName) || command.LastName.Trim().Length > MaximumNameLength)
         {
             errors["lastName"] = [$"The last name is required ({MaximumNameLength} characters at most)."];
+        }
+
+        // GDPR: the privacy policy is reachable through a link next to the box; no account until the box is ticked.
+        if (!command.AcceptPrivacyPolicy)
+        {
+            errors["acceptPrivacyPolicy"] = ["The privacy policy must be accepted."];
         }
 
         return errors;
