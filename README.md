@@ -44,8 +44,8 @@ La couche Application est rangée par fonctionnalité (`Features/<Fonctionnalit�
 
 | User story | Contenu | État |
 |---|---|---|
-| US 1.1 | Consulter les films et les horaires | Fait (API : `GET /api/schedule`) |
-| US 2.1 | Créer un compte et se connecter | Fait (API : `POST /api/users`, `POST /api/tokens`, `GET /api/users/me`) |
+| US 1.1 | Consulter les films et les horaires | Fait (API : `GET /api/schedule`, `GET /api/movies`) |
+| US 2.1 | Créer un compte et se connecter | Fait côté API : `POST /api/users` (avec l'acceptation de la politique de confidentialité), `POST /api/tokens`, `GET /api/users/me`, `DELETE /api/users/me` ; écrans du front en cours |
 | US 2.2 | Voir les places restantes en temps réel | À faire |
 | US 2.3 | Réserver un nombre de places et passer au paiement | À faire |
 | US 5.2 | Gérer la programmation | À faire |
@@ -58,13 +58,15 @@ Les user stories, leurs critères d'acceptation, la Definition of Ready et la De
 | Méthode | Route | Rôle |
 |---|---|---|
 | `GET` | `/api/schedule?date=AAAA-MM-JJ` | Films et séances d'un jour (aujourd'hui si la date est omise), films triés par titre, séances triées par heure |
-| `POST` | `/api/users` | Création d'un compte spectateur ; renvoie un jeton d'accès (`201`) |
+| `GET` | `/api/movies` | Films à l'affiche (au moins une séance à venir), triés par titre |
+| `POST` | `/api/users` | Création d'un compte spectateur ; `acceptPrivacyPolicy: true` obligatoire (date et version de la politique enregistrées) ; renvoie un jeton d'accès (`201`) |
 | `POST` | `/api/tokens` | Connexion : renvoie un jeton d'accès (`200`), ou `401` sans préciser si l'adresse ou le mot de passe est faux |
 | `GET` | `/api/users/me` | Profil de l'utilisateur connecté (jeton obligatoire) |
+| `DELETE` | `/api/users/me` | Suppression du compte de l'utilisateur connecté (`204`, droit à l'effacement) ; ses réservations sont gardées pour la comptabilité, sans lien avec le compte |
 | `GET` | `/health` | État de l'application (`Healthy`) |
 | `GET` | `/` | Nom de l'API |
 
-Tout endpoint est réservé aux utilisateurs connectés, sauf ceux déclarés publics (programmation, inscription, connexion, `/health`). Dans Swagger, le bouton **Authorize** reçoit le jeton renvoyé par `POST /api/tokens`.
+Tout endpoint est réservé aux utilisateurs connectés, sauf ceux déclarés publics (programmation, films à l'affiche, inscription, connexion, `/health`). Dans Swagger, le bouton **Authorize** reçoit le jeton renvoyé par `POST /api/tokens`.
 
 En développement, la documentation interactive est sur `/swagger` et le document OpenAPI sur `/openapi/v1.json`. Swagger est désactivé par défaut et s'active par configuration (`Swagger:Enabled`, ou la variable d'environnement `Swagger__Enabled=true`).
 

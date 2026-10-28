@@ -109,3 +109,31 @@ VALUES ('20261013211024_AddScreeningStartsAtIndex', '10.0.12');
 
 COMMIT;
 
+START TRANSACTION;
+ALTER TABLE "Users" ADD "PrivacyPolicyAcceptedAt" timestamp with time zone;
+
+ALTER TABLE "Users" ADD "PrivacyPolicyVersion" character varying(20);
+
+INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+VALUES ('20261028092012_AddPrivacyPolicyAcceptance', '10.0.12');
+
+COMMIT;
+
+START TRANSACTION;
+ALTER TABLE "Reservations" ALTER COLUMN "UserId" DROP NOT NULL;
+
+INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+VALUES ('20261028113247_AllowReservationsWithoutAccount', '10.0.12');
+
+COMMIT;
+
+START TRANSACTION;
+ALTER TABLE "Reservations" DROP CONSTRAINT "FK_Reservations_Users_UserId";
+
+ALTER TABLE "Reservations" ADD CONSTRAINT "FK_Reservations_Users_UserId" FOREIGN KEY ("UserId") REFERENCES "Users" ("Id") ON DELETE SET NULL;
+
+INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+VALUES ('20261028123408_DetachReservationsOfDeletedAccounts', '10.0.12');
+
+COMMIT;
+
