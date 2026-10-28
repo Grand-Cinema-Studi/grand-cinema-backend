@@ -46,6 +46,11 @@ public sealed class UserRepository : IUserRepository
             .SingleOrDefaultAsync(u => u.Id == id, cancellationToken);
     }
 
-    public Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default) =>
-        throw new NotImplementedException();
+    public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        // One DELETE statement; the foreign key of Reservations is ON DELETE SET NULL,
+        // so PostgreSQL detaches the reservations of the account in the same statement.
+        var deleted = await _db.Users.Where(u => u.Id == id).ExecuteDeleteAsync(cancellationToken);
+        return deleted > 0;
+    }
 }
