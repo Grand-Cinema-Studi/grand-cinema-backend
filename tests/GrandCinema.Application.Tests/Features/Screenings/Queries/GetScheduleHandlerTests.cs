@@ -12,6 +12,14 @@ public class GetScheduleHandlerTests
     private readonly Mock<IScreeningReadRepository> _screenings = new();
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 7, 18, 10, 0, 0, TimeSpan.Zero));
 
+    public GetScheduleHandlerTests()
+    {
+        // By default no seat is taken: the US 1.1 tests do not depend on reservations
+        _screenings
+            .Setup(r => r.CountTakenSeatsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, int>());
+    }
+
     [Fact]
     [Trait("US", "1.1")]
     public async Task When_screenings_exist_Then_they_are_grouped_by_movie()
@@ -154,5 +162,77 @@ public class GetScheduleHandlerTests
 
         // Assert
         result.Movies.Select(m => m.Title).ShouldBe(new[] { "Blue Note", "Metropolis", "Zorro" });
+    }
+
+    private static Screening ScreeningOn(DateOnly day, int capacity) => new()
+    {
+        Id = Guid.NewGuid(),
+        Room = new Room { Id = Guid.NewGuid(), Name = "Salle 1", Capacity = capacity },
+        Movie = new Movie { Id = Guid.NewGuid(), Title = "Blue Note", Synopsis = "A documentary about the jazz label", DurationMinutes = 136, Genre = "Documentary", ReleaseDate = new DateOnly(2023, 10, 1), PosterUrl = "https://example.com/poster.jpg" },
+        StartsAt = day.ToDateTime(new TimeOnly(20, 30)),
+        Price = 9m
+    };
+
+    [Fact]
+    [Trait("US", "2.2")]
+    public async Task When_screenings_are_found_Then_their_taken_seats_are_counted_at_the_current_instant()
+    {
+        // Arrange
+        var day = new DateOnly(2026, 7, 18);
+        var screening = ScreeningOn(day, 170);
+        _screenings
+            .Setup(r => r.GetScreeningsAsync(day, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Screening> { screening });
+        var handler = new GetScheduleHandler(_screenings.Object, _time);
+
+        // Act
+        await handler.Handle(new GetScheduleQuery(day));
+
+        // Assert: a hold expires at an instant in UTC, so it is compared with the current instant in UTC, not with the local time
+        _screenings.Verify(r => r.CountTakenSeatsAsync(
+            It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { screening.Id })),
+            new DateTime(2026, 7, 18, 10, 0, 0, DateTimeKind.Utc),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    [Trait("US", "2.2")]
+    public async Task When_seats_are_taken_Then_the_remaining_seats_are_the_capacity_minus_the_taken_seats()
+    {
+        // Arrange
+        var day = new DateOnly(2026, 7, 18);
+        var screening = ScreeningOn(day, 170);
+        _screenings
+            .Setup(r => r.GetScreeningsAsync(day, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Screening> { screening });
+        _screenings
+            .Setup(r => r.CountTakenSeatsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, int> { [screening.Id] = 120 });
+        var handler = new GetScheduleHandler(_screenings.Object, _time);
+
+        // Act
+        var result = await handler.Handle(new GetScheduleQuery(day));
+
+        // Assert
+        result.Movies.ShouldHaveSingleItem().Screenings.ShouldHaveSingleItem().RemainingSeats.ShouldBe(50);
+    }
+
+    [Fact]
+    [Trait("US", "2.2")]
+    public async Task When_no_seat_is_taken_for_a_screening_Then_all_its_seats_remain()
+    {
+        // Arrange: the repository leaves out the screenings without any seat taken (default setup: empty result)
+        var day = new DateOnly(2026, 7, 18);
+        var screening = ScreeningOn(day, 70);
+        _screenings
+            .Setup(r => r.GetScreeningsAsync(day, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Screening> { screening });
+        var handler = new GetScheduleHandler(_screenings.Object, _time);
+
+        // Act
+        var result = await handler.Handle(new GetScheduleQuery(day));
+
+        // Assert
+        result.Movies.ShouldHaveSingleItem().Screenings.ShouldHaveSingleItem().RemainingSeats.ShouldBe(70);
     }
 }

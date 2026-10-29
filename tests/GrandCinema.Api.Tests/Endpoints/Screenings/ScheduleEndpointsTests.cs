@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using GrandCinema.Domain.Entities;
+using GrandCinema.Domain.Enums;
 using Shouldly;
 
 namespace GrandCinema.Api.Tests.Endpoints.Screenings;
@@ -65,5 +66,50 @@ public class ScheduleEndpointsTests
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    [Trait("US", "2.2")]
+    [Trait("Category", "Integration")]
+    public async Task When_seats_are_sold_or_held_Then_each_screening_shows_its_remaining_seats()
+    {
+        // Arrange: a room of 4 seats, on a day no other test uses. One seat is sold, one is held by a payment in progress,
+        // one was held by a payment abandoned more than 10 minutes ago, one belongs to a cancelled reservation.
+        var room = new Room { Id = Guid.NewGuid(), Name = $"Room {Guid.NewGuid():N}", Capacity = 4 };
+        var seats = Enumerable.Range(1, 4).Select(number => new Seat { Id = Guid.NewGuid(), Room = room, Row = "A", Number = number }).ToList();
+        var movie = new Movie { Id = Guid.NewGuid(), Title = "Remaining seats contract", Synopsis = "Synopsis", DurationMinutes = 110, Genre = "Drama", ReleaseDate = new DateOnly(2030, 1, 1), PosterUrl = "https://example.com/poster.jpg" };
+        var screening = new Screening { Id = Guid.NewGuid(), Movie = movie, Room = room, StartsAt = new DateTime(2031, 4, 10, 20, 30, 0, DateTimeKind.Unspecified), Price = 9.5m };
+        var now = DateTime.UtcNow;
+        Reservation Holding(Seat seat, ReservationStatus status, DateTime? expiresAt) => new()
+        {
+            Id = Guid.NewGuid(),
+            Screening = screening,
+            Status = status,
+            CreatedAt = now,
+            ExpiresAt = expiresAt,
+            TotalAmount = 9.5m,
+            ReservedSeats = { new ReservedSeat { Seat = seat, ScreeningId = screening.Id } }
+        };
+        await using (var db = _api.CreateDbContext())
+        {
+            db.Seats.AddRange(seats);
+            db.Reservations.AddRange(
+                Holding(seats[0], ReservationStatus.Confirmed, null),
+                Holding(seats[1], ReservationStatus.PendingPayment, now.AddMinutes(10)),
+                Holding(seats[2], ReservationStatus.PendingPayment, now.AddMinutes(-1)),
+                Holding(seats[3], ReservationStatus.Cancelled, null));
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _api.CreateVisitorClient();
+
+        // Act
+        var response = await client.GetAsync("/api/schedule?date=2031-04-10");
+
+        // Assert: 4 seats, minus the sold one and the held one; the expired hold and the cancelled reservation free theirs
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var schedule = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var screeningJson = schedule.GetProperty("movies")[0].GetProperty("screenings")[0];
+        screeningJson.GetProperty("remainingSeats").GetInt32().ShouldBe(2);
     }
 }

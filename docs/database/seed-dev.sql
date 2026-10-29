@@ -1,6 +1,7 @@
 -- Demo data for local development and acceptance testing, generated relative to the current date:
 -- 10 rooms (1,700 seats), 125 movies (114 showing in the coming weeks, 11 no longer showing),
--- screenings over several weeks (1 to 3 a day per movie), two demo accounts.
+-- screenings over several weeks (1 to 3 a day per movie), the seats of each room, demo counter sales
+-- on the 19:30 screenings of the coming 7 days (one full screening a day), two demo accounts.
 -- Safe to run several times. To move the screenings to today's date, run scripts/reset-demo-screenings.sh.
 -- Posters, release dates and running times come from TMDB: see scripts/fetch-tmdb-posters.mjs and seed-posters.sql.
 
@@ -364,4 +365,57 @@ INSERT INTO "Users" ("Id", "Email", "PasswordHash", "FirstName", "LastName", "Cr
 VALUES
     ('44444444-4444-4444-4444-444444444441', 'manager@grand-cinema.test', 'AQAAAAIAAYagAAAAELa1KX2ovC0OtXLAcj0RNezw1+z35bTvMdcWWzGbf/KDMxe0tQ29/GimwyPWa8hBUg==', 'Paul', 'Durand', NOW(), 'Manager'),
     ('44444444-4444-4444-4444-444444444442', 'client@grand-cinema.test', 'AQAAAAIAAYagAAAAEDpvNboqLNY/zxtSnOafj8FM0tN85JSIlBLpiTysMTkLBR5C2l5qqyxQ9HeESAhqoQ==', 'Léa', 'Martin', NOW(), 'Customer')
+ON CONFLICT DO NOTHING;
+
+-- Seats of each demo room (US 2.2, 2.3): rows of 10 seats, named A to Z, then AA, AB…, as many as the capacity.
+-- Deterministic identifiers ('55555555-' || md5(...)): reloading the script never creates a seat twice.
+INSERT INTO "Seats" ("Id", "RoomId", "Row", "Number")
+SELECT
+    ('55555555-' || substr(h, 1, 4) || '-' || substr(h, 5, 4) || '-' || substr(h, 9, 4) || '-' || substr(h, 13, 12))::uuid,
+    r."Id", w.label, n.number
+FROM "Rooms" r
+CROSS JOIN LATERAL generate_series(0, r."Capacity" / 10 - 1) AS g (row_index)
+CROSS JOIN LATERAL (SELECT CASE WHEN g.row_index < 26 THEN chr(65 + g.row_index) ELSE 'A' || chr(39 + g.row_index) END AS label) AS w
+CROSS JOIN LATERAL generate_series(1, 10) AS n (number)
+CROSS JOIN LATERAL (SELECT md5(r."Id"::text || w.label || n.number::text) AS h) AS k
+WHERE r."Id"::text LIKE '11111111-%'
+ON CONFLICT ("Id") DO NOTHING;
+
+-- Demo counter sales (no account, hence no UserId), so that the schedule shows varied remaining seats (US 2.2):
+-- every 19:30 screening of the coming 7 days is 30 to 90 % sold, and each day the one in the smallest room is full.
+-- Identifiers '66666666-' || md5(screening): one sale per screening; scripts/reset-demo-screenings.sh recreates them from today.
+INSERT INTO "Reservations" ("Id", "UserId", "ScreeningId", "Status", "CreatedAt", "ExpiresAt", "TotalAmount")
+SELECT
+    ('66666666-' || substr(h, 1, 4) || '-' || substr(h, 5, 4) || '-' || substr(h, 9, 4) || '-' || substr(h, 13, 12))::uuid,
+    NULL, d.screening_id, 'Confirmed', NOW(), NULL, d.seats * d.price
+FROM (
+    SELECT
+        s."Id" AS screening_id,
+        s."Price" AS price,
+        CASE
+            WHEN ROW_NUMBER() OVER (PARTITION BY s."StartsAt"::date ORDER BY r."Capacity", s."Id") = 1 THEN r."Capacity"
+            ELSE r."Capacity" * (30 + get_byte(decode(md5(s."Id"::text), 'hex'), 0) % 61) / 100
+        END AS seats
+    FROM "Screenings" s
+    JOIN "Rooms" r ON r."Id" = s."RoomId"
+    WHERE s."Id"::text LIKE '33333333-%'
+      AND s."StartsAt"::time = TIME '19:30'
+      AND s."StartsAt"::date BETWEEN CURRENT_DATE AND CURRENT_DATE + 6
+) AS d
+CROSS JOIN LATERAL (SELECT md5(d.screening_id::text) AS h) AS k
+ON CONFLICT ("Id") DO NOTHING;
+
+-- The seats of each demo sale: the first ones of the room (row A first), as many as were sold.
+INSERT INTO "ReservedSeats" ("ReservationId", "SeatId", "ScreeningId")
+SELECT res."Id", seat."Id", res."ScreeningId"
+FROM "Reservations" res
+JOIN "Screenings" s ON s."Id" = res."ScreeningId"
+CROSS JOIN LATERAL (
+    SELECT st."Id"
+    FROM "Seats" st
+    WHERE st."RoomId" = s."RoomId"
+    ORDER BY length(st."Row"), st."Row", st."Number"
+    LIMIT (res."TotalAmount" / s."Price")::int
+) AS seat
+WHERE res."Id"::text LIKE '66666666-%'
 ON CONFLICT DO NOTHING;
