@@ -45,8 +45,8 @@ La couche Application est rangée par fonctionnalité (`Features/<Fonctionnalit�
 | User story | Contenu | État |
 |---|---|---|
 | US 1.1 | Consulter les films et les horaires | Fait (API : `GET /api/schedule`, `GET /api/movies`) |
-| US 2.1 | Créer un compte et se connecter | Fait côté API : `POST /api/users` (avec l'acceptation de la politique de confidentialité), `POST /api/tokens`, `GET /api/users/me`, `DELETE /api/users/me` ; écrans du front en cours |
-| US 2.2 | Voir les places restantes en temps réel | À faire |
+| US 2.1 | Créer un compte et se connecter | Fait (API et front) : `POST /api/users` (avec l'acceptation de la politique de confidentialité), `POST /api/tokens`, `GET /api/users/me`, `DELETE /api/users/me` |
+| US 2.2 | Voir les places restantes en temps réel | Fait côté API : `remainingSeats` sur chaque séance de `GET /api/schedule` ; affichage dans le front |
 | US 2.3 | Réserver un nombre de places et passer au paiement | À faire |
 | US 5.2 | Gérer la programmation | À faire |
 | US 5.3 | Suivre les réservations | À faire |
@@ -57,7 +57,7 @@ Les user stories, leurs critères d'acceptation, la Definition of Ready et la De
 
 | Méthode | Route | Rôle |
 |---|---|---|
-| `GET` | `/api/schedule?date=AAAA-MM-JJ` | Films et séances d'un jour (aujourd'hui si la date est omise), films triés par titre, séances triées par heure |
+| `GET` | `/api/schedule?date=AAAA-MM-JJ` | Films et séances d'un jour (aujourd'hui si la date est omise), films triés par titre, séances triées par heure, avec les places restantes de chaque séance (vendues et paiements en cours déduits) |
 | `GET` | `/api/movies` | Films à l'affiche (au moins une séance à venir), triés par titre |
 | `POST` | `/api/users` | Création d'un compte spectateur ; `acceptPrivacyPolicy: true` obligatoire (date et version de la politique enregistrées) ; renvoie un jeton d'accès (`201`) |
 | `POST` | `/api/tokens` | Connexion : renvoie un jeton d'accès (`200`), ou `401` sans préciser si l'adresse ou le mot de passe est faux |
@@ -122,7 +122,7 @@ dotnet ef database update --project src/GrandCinema.Infrastructure --startup-pro
 bash scripts/reset-demo-screenings.sh
 ```
 
-Le script charge `docs/database/seed-dev.sql` : 10 salles (1 700 places), 125 films réels (114 à l'affiche dans les semaines à venir, 11 qui ne sont plus programmés), plusieurs semaines de séances (1 à 3 par jour et par film) et deux comptes de démonstration (`manager@grand-cinema.test` / `Manager-Demo-2026!` et `client@grand-cinema.test` / `Client-Demo-2026!`). Les séances sont calculées à partir de la date du jour : relancer le script les remet à jour.
+Le script charge `docs/database/seed-dev.sql` : 10 salles (1 700 places), 125 films réels (114 à l'affiche dans les semaines à venir, 11 qui ne sont plus programmés), plusieurs semaines de séances (1 à 3 par jour et par film), les places de chaque salle, des ventes au guichet sur les séances de 19 h 30 des 7 prochains jours (une séance complète par jour) et deux comptes de démonstration (`manager@grand-cinema.test` / `Manager-Demo-2026!` et `client@grand-cinema.test` / `Client-Demo-2026!`). Les séances sont calculées à partir de la date du jour : relancer le script les remet à jour.
 
 Les affiches, dates de sortie et durées viennent de [TMDB](https://www.themoviedb.org) : avec `TMDB_TOKEN=<jeton>` dans le `.env` (jeton « API Read Access Token » ou clé d'API d'un compte TMDB), `node --env-file=.env scripts/fetch-tmdb-posters.mjs` (Node 20.6 ou plus) écrit `docs/database/seed-posters.sql`, appliqué ensuite par le script de remise à zéro. Ce produit utilise l'API TMDB mais n'est ni approuvé ni certifié par TMDB.
 
