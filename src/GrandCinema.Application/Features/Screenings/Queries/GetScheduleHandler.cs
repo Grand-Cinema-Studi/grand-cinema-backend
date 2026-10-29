@@ -20,9 +20,10 @@ public sealed class GetScheduleHandler : IQueryHandler<GetScheduleQuery, Schedul
     {
         var date = query.Date ?? DateOnly.FromDateTime(_timeProvider.GetLocalNow().DateTime);
         var screenings = await _screeningReadRepository.GetScreeningsAsync(date, cancellationToken);
+        var takenSeats = await _screeningReadRepository.CountTakenSeatsAsync(screenings.Select(s => s.Id).ToList(), _timeProvider.GetUtcNow().UtcDateTime, cancellationToken);
         var movies = screenings
             .GroupBy(s => s.Movie.Id)
-            .Select(group => group.First().Movie.ToMovieScheduleDto(group))
+            .Select(group => group.First().Movie.ToMovieScheduleDto(group, takenSeats))
             .OrderBy(m => m.Title)
             .ToList();
 
