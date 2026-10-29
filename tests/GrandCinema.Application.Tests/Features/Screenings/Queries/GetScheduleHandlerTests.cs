@@ -12,6 +12,14 @@ public class GetScheduleHandlerTests
     private readonly Mock<IScreeningReadRepository> _screenings = new();
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 7, 18, 10, 0, 0, TimeSpan.Zero));
 
+    public GetScheduleHandlerTests()
+    {
+        // By default no seat is taken: the US 1.1 tests do not depend on reservations
+        _screenings
+            .Setup(r => r.CountTakenSeatsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, int>());
+    }
+
     [Fact]
     [Trait("US", "1.1")]
     public async Task When_screenings_exist_Then_they_are_grouped_by_movie()

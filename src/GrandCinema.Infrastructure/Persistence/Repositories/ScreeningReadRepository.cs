@@ -25,4 +25,7 @@ public sealed class ScreeningReadRepository : IScreeningReadRepository
             .Where(s => s.StartsAt >= start && s.StartsAt < end)
             .ToListAsync(cancellationToken);
     }
+
+    public Task<IReadOnlyDictionary<Guid, int>> CountTakenSeatsAsync(IReadOnlyCollection<Guid> screeningIds, DateTime now, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyDictionary<Guid, int>>(new Dictionary<Guid, int>());
 }

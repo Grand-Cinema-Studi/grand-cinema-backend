@@ -14,7 +14,7 @@ public static class ScheduleEndpoints
             .WithName("GetSchedule")
             .WithTags("Schedule")
             .WithSummary("Movies and screenings of a day")
-            .WithDescription("Returns the movies showing on the given date (today if omitted), with their screenings sorted by time.");
+            .WithDescription("Returns the movies showing on the given date (today if omitted), with their screenings sorted by time and the remaining seats of each screening.");
 
         return app;
     }

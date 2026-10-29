@@ -24,6 +24,7 @@ internal static class ScreenMappings
         ScreeningId = screening.Id,
         RoomName = screening.Room.Name,
         StartsAt = screening.StartsAt,
-        Price = screening.Price
+        Price = screening.Price,
+        RemainingSeats = screening.Room.Capacity
     };
 }
