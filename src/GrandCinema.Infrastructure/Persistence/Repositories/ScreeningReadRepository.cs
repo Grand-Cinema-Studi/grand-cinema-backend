@@ -1,5 +1,6 @@
 using GrandCinema.Application.Abstractions.Persistence;
 using GrandCinema.Domain.Entities;
+using GrandCinema.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace GrandCinema.Infrastructure.Persistence.Repositories;
@@ -26,6 +27,17 @@ public sealed class ScreeningReadRepository : IScreeningReadRepository
             .ToListAsync(cancellationToken);
     }
 
-    public Task<IReadOnlyDictionary<Guid, int>> CountTakenSeatsAsync(IReadOnlyCollection<Guid> screeningIds, DateTime now, CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyDictionary<Guid, int>>(new Dictionary<Guid, int>());
+    public async Task<IReadOnlyDictionary<Guid, int>> CountTakenSeatsAsync(IReadOnlyCollection<Guid> screeningIds, DateTime now, CancellationToken cancellationToken = default)
+    {
+        // A seat is taken when it is sold, or held by a payment whose 10 minutes have not run out.
+        // An expired hold or a cancelled reservation frees it, even before its lines are deleted (US 2.3).
+        return await _db.ReservedSeats
+            .AsNoTracking()
+            .Where(rs => screeningIds.Contains(rs.ScreeningId))
+            .Where(rs => rs.Reservation.Status == ReservationStatus.Confirmed
+                || (rs.Reservation.Status == ReservationStatus.PendingPayment && rs.Reservation.ExpiresAt > now))
+            .GroupBy(rs => rs.ScreeningId)
+            .Select(group => new { ScreeningId = group.Key, Count = group.Count() })
+            .ToDictionaryAsync(row => row.ScreeningId, row => row.Count, cancellationToken);
+    }
 }
