@@ -22,6 +22,7 @@ public static class DependencyInjection
         services.AddScoped<IQueryHandler<GetCurrentUserQuery, Result<UserDto>>, GetCurrentUserHandler>();
         services.AddScoped<IQueryHandler<GetMoviesShowingQuery, IReadOnlyList<MovieDto>>, GetMoviesShowingHandler>();
         services.AddScoped<ICommandHandler<DeleteCurrentUserCommand, Result<Guid>>, DeleteCurrentUserHandler>();
+        services.AddScoped<IQueryHandler<GetMovieDetailsQuery, Result<MovieDetailsDto>>, GetMovieDetailsHandler>();
 
         return services;
     }
