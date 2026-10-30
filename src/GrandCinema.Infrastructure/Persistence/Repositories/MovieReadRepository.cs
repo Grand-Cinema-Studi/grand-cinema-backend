@@ -21,6 +21,10 @@ public sealed class MovieReadRepository : IMovieReadRepository
             .ToListAsync(cancellationToken);
     }
 
-    public Task<Movie?> GetByIdAsync(Guid movieId, CancellationToken cancellationToken = default) =>
-        throw new NotImplementedException();
+    public async Task<Movie?> GetByIdAsync(Guid movieId, CancellationToken cancellationToken = default)
+    {
+        return await _db.Movies
+            .AsNoTracking()
+            .FirstOrDefaultAsync(m => m.Id == movieId, cancellationToken);
+    }
 }

@@ -41,6 +41,13 @@ public sealed class ScreeningReadRepository : IScreeningReadRepository
             .ToDictionaryAsync(row => row.ScreeningId, row => row.Count, cancellationToken);
     }
 
-    public Task<IReadOnlyList<Screening>> GetUpcomingScreeningsOfMovieAsync(Guid movieId, DateTime from, CancellationToken cancellationToken = default) =>
-        throw new NotImplementedException();
+    public async Task<IReadOnlyList<Screening>> GetUpcomingScreeningsOfMovieAsync(Guid movieId, DateTime from, CancellationToken cancellationToken = default)
+    {
+        return await _db.Screenings
+            .AsNoTracking()
+            .Include(s => s.Room)
+            .Where(s => s.MovieId == movieId && s.StartsAt >= from)
+            .OrderBy(s => s.StartsAt)
+            .ToListAsync(cancellationToken);
+    }
 }
