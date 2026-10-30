@@ -50,4 +50,11 @@ public sealed class ScreeningReadRepository : IScreeningReadRepository
             .OrderBy(s => s.StartsAt)
             .ToListAsync(cancellationToken);
     }
+
+    public async Task<Screening?> GetByIdAsync(Guid screeningId, CancellationToken cancellationToken = default)
+    {
+        return await _db.Screenings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == screeningId, cancellationToken);
+    }
 }

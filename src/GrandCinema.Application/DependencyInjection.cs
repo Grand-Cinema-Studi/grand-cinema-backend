@@ -5,6 +5,9 @@ using GrandCinema.Application.Features.Auth.DTOs;
 using GrandCinema.Application.Features.Auth.Queries;
 using GrandCinema.Application.Features.Movies.DTOs;
 using GrandCinema.Application.Features.Movies.Queries;
+using GrandCinema.Application.Features.Reservations.Commands;
+using GrandCinema.Application.Features.Reservations.DTOs;
+using GrandCinema.Application.Features.Reservations.Queries;
 using GrandCinema.Application.Features.Screenings.DTOs;
 using GrandCinema.Application.Features.Screenings.Queries;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,6 +26,8 @@ public static class DependencyInjection
         services.AddScoped<IQueryHandler<GetMoviesShowingQuery, IReadOnlyList<MovieDto>>, GetMoviesShowingHandler>();
         services.AddScoped<ICommandHandler<DeleteCurrentUserCommand, Result<Guid>>, DeleteCurrentUserHandler>();
         services.AddScoped<IQueryHandler<GetMovieDetailsQuery, Result<MovieDetailsDto>>, GetMovieDetailsHandler>();
+        services.AddScoped<ICommandHandler<HoldSeatsCommand, Result<ReservationDto>>, HoldSeatsHandler>();
+        services.AddScoped<IQueryHandler<GetReservationQuery, Result<ReservationDto>>, GetReservationHandler>();
 
         return services;
     }

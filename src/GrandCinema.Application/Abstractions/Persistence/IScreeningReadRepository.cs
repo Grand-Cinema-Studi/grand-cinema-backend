@@ -11,4 +11,6 @@ public interface IScreeningReadRepository
     Task<IReadOnlyDictionary<Guid, int>> CountTakenSeatsAsync(IReadOnlyCollection<Guid> screeningIds, DateTime now, CancellationToken cancellationToken = default);
     // Screenings of a movie starting at `from` or later (local time of the cinema), with their room, without any date limit.
     Task<IReadOnlyList<Screening>> GetUpcomingScreeningsOfMovieAsync(Guid movieId, DateTime from, CancellationToken cancellationToken = default);
+
+    Task<Screening?> GetByIdAsync(Guid screeningId, CancellationToken cancellationToken = default);
 }
