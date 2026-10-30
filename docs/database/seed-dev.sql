@@ -419,3 +419,18 @@ CROSS JOIN LATERAL (
 ) AS seat
 WHERE res."Id"::text LIKE '66666666-%'
 ON CONFLICT DO NOTHING;
+
+-- Screenings far ahead (decision of 29/10/2026: a screening can be booked up to a year in advance):
+-- jazz films for the next Jazz Festival, in 6 months and in a year, in Salle 2 at 20:30.
+INSERT INTO "Screenings" ("Id", "MovieId", "RoomId", "StartsAt", "Price")
+SELECT
+    ('33333333-' || substr(h, 1, 4) || '-' || substr(h, 5, 4) || '-' || substr(h, 9, 4) || '-' || substr(h, 13, 12))::uuid,
+    f.movie_id, '11111111-1111-1111-1111-000000000002'::uuid, (CURRENT_DATE + f.day) + TIME '20:30', 12.00
+FROM (VALUES
+    ('22222222-2222-2222-2222-222222222221'::uuid, 182),
+    ('22222222-2222-2222-2222-000000000003'::uuid, 183),
+    ('22222222-2222-2222-2222-000000000005'::uuid, 365),
+    ('22222222-2222-2222-2222-000000000004'::uuid, 366)
+) AS f (movie_id, day)
+CROSS JOIN LATERAL (SELECT md5('far-ahead' || f.movie_id::text || f.day::text) AS h) AS k
+ON CONFLICT ("Id") DO NOTHING;
