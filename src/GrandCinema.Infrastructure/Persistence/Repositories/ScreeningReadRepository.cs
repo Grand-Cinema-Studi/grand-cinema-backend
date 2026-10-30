@@ -40,4 +40,14 @@ public sealed class ScreeningReadRepository : IScreeningReadRepository
             .Select(group => new { ScreeningId = group.Key, Count = group.Count() })
             .ToDictionaryAsync(row => row.ScreeningId, row => row.Count, cancellationToken);
     }
+
+    public async Task<IReadOnlyList<Screening>> GetUpcomingScreeningsOfMovieAsync(Guid movieId, DateTime from, CancellationToken cancellationToken = default)
+    {
+        return await _db.Screenings
+            .AsNoTracking()
+            .Include(s => s.Room)
+            .Where(s => s.MovieId == movieId && s.StartsAt >= from)
+            .OrderBy(s => s.StartsAt)
+            .ToListAsync(cancellationToken);
+    }
 }

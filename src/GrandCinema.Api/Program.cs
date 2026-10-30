@@ -57,6 +57,7 @@ app.UseRateLimiter();
 app.MapHealthChecks("/health").AllowAnonymous();
 app.MapScheduleEndpoints();
 app.MapMoviesShowingEndpoints();
+app.MapMovieDetailsEndpoints();
 app.MapRegisterUserEndpoints();
 app.MapAuthenticateUserEndpoints();
 app.MapCurrentUserEndpoints();

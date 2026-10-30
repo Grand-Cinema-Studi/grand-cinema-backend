@@ -20,4 +20,11 @@ public sealed class MovieReadRepository : IMovieReadRepository
             .Where(m => _db.Screenings.Any(s => s.MovieId == m.Id && s.StartsAt >= from))
             .ToListAsync(cancellationToken);
     }
+
+    public async Task<Movie?> GetByIdAsync(Guid movieId, CancellationToken cancellationToken = default)
+    {
+        return await _db.Movies
+            .AsNoTracking()
+            .FirstOrDefaultAsync(m => m.Id == movieId, cancellationToken);
+    }
 }

@@ -96,4 +96,39 @@ public class ScreeningReadRepositoryTests : IClassFixture<PostgreSqlFixture>
         result[evening.Id].ShouldBe(3);
         result[night.Id].ShouldBe(1);
     }
+
+    [Fact]
+    [Trait("US", "1.1")]
+    [Trait("Category", "Integration")]
+    public async Task When_a_movie_has_past_and_upcoming_screenings_Then_only_its_upcoming_screenings_are_returned_with_their_room()
+    {
+        // Arrange: past, starting right now, a year ahead, and another movie
+        var now = new DateTime(2026, 9, 1, 18, 0, 0, DateTimeKind.Unspecified);
+        // Unique name: the rooms of the other tests of this class share the same database
+        var room = new Room { Id = Guid.NewGuid(), Name = $"Room {Guid.NewGuid():N}", Capacity = 120 };
+        Movie NewMovie(string title) => new() { Id = Guid.NewGuid(), Title = title, Synopsis = "Synopsis", DurationMinutes = 100, Genre = "Drama", ReleaseDate = new DateOnly(2025, 1, 1), PosterUrl = "https://example.com/p.jpg" };
+        var bird = NewMovie("Bird");
+        var other = NewMovie("Other");
+        Screening At(Movie movie, DateTime startsAt) => new() { Id = Guid.NewGuid(), Movie = movie, Room = room, StartsAt = startsAt, Price = 9m };
+        var ended = At(bird, now.AddHours(-2));
+        var startsNow = At(bird, now);
+        var nextYear = At(bird, now.AddYears(1));
+        var otherMovie = At(other, now.AddDays(1));
+
+        await using (var seed = _database.CreateDbContext())
+        {
+            seed.Screenings.AddRange(ended, startsNow, nextYear, otherMovie);
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = _database.CreateDbContext();
+        var repository = new ScreeningReadRepository(db);
+
+        // Act
+        var result = await repository.GetUpcomingScreeningsOfMovieAsync(bird.Id, now);
+
+        // Assert
+        result.Select(s => s.Id).ShouldBe(new[] { startsNow.Id, nextYear.Id }, ignoreOrder: true);
+        result.ShouldAllBe(s => s.Room.Name == room.Name);
+    }
 }
