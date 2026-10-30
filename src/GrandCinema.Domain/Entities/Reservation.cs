@@ -19,9 +19,29 @@ public class Reservation
     public Screening Screening { get; set; } = null!;
 
     /// <summary>Holds seats for a signed-in customer while they pay: not a sale yet (US 2.3, criterion 3).</summary>
-    public static Reservation Hold(Guid userId, Screening screening, IReadOnlyCollection<Seat> seats, DateTime nowUtc) =>
-        throw new NotImplementedException("Step 17e");
+    public static Reservation Hold(Guid userId, Screening screening, IReadOnlyCollection<Seat> seats, DateTime nowUtc)
+    {
+        var hold = new Reservation
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            // The identifier only: the screening may come from another DbContext, it must not be inserted again
+            ScreeningId = screening.Id,
+            Status = ReservationStatus.PendingPayment,
+            CreatedAt = nowUtc,
+            ExpiresAt = nowUtc + HoldDuration,
+            // The price is fixed when the seats are held: the payment (US 3.1) takes this amount
+            TotalAmount = screening.Price * seats.Count
+        };
+
+        foreach (var seat in seats)
+        {
+            hold.ReservedSeats.Add(new ReservedSeat { ReservationId = hold.Id, ScreeningId = screening.Id, SeatId = seat.Id, Seat = seat });
+        }
+
+        return hold;
+    }
 
     /// <summary>A hold whose 10 minutes have run out frees its seats, even before it is marked "Expired".</summary>
-    public bool HasExpired(DateTime nowUtc) => throw new NotImplementedException("Step 17e");
+    public bool HasExpired(DateTime nowUtc) => Status == ReservationStatus.PendingPayment && ExpiresAt <= nowUtc;
 }
