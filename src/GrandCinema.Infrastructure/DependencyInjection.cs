@@ -21,6 +21,7 @@ public static class DependencyInjection
         services.AddScoped<IScreeningReadRepository, ScreeningReadRepository>();
         services.AddScoped<IMovieReadRepository, MovieReadRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IReservationRepository, ReservationRepository>();
 
         // Read on first use, not at startup: the EF Core design-time tools build the host without any JWT settings.
         services.AddSingleton(_ => JwtOptions.FromConfiguration(configuration));

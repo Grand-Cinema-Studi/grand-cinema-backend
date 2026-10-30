@@ -1,5 +1,6 @@
 using GrandCinema.Api.Endpoints.Auth;
 using GrandCinema.Api.Endpoints.Movies;
+using GrandCinema.Api.Endpoints.Reservations;
 using GrandCinema.Api.Endpoints.Screenings;
 using GrandCinema.Api.OpenApi;
 using GrandCinema.Api.Security;
@@ -58,6 +59,8 @@ app.MapHealthChecks("/health").AllowAnonymous();
 app.MapScheduleEndpoints();
 app.MapMoviesShowingEndpoints();
 app.MapMovieDetailsEndpoints();
+app.MapHoldSeatsEndpoints();
+app.MapGetReservationEndpoints();
 app.MapRegisterUserEndpoints();
 app.MapAuthenticateUserEndpoints();
 app.MapCurrentUserEndpoints();
