@@ -40,4 +40,7 @@ public sealed class ScreeningReadRepository : IScreeningReadRepository
             .Select(group => new { ScreeningId = group.Key, Count = group.Count() })
             .ToDictionaryAsync(row => row.ScreeningId, row => row.Count, cancellationToken);
     }
+
+    public Task<IReadOnlyList<Screening>> GetUpcomingScreeningsOfMovieAsync(Guid movieId, DateTime from, CancellationToken cancellationToken = default) =>
+        throw new NotImplementedException();
 }
