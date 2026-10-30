@@ -51,6 +51,10 @@ public sealed class ScreeningReadRepository : IScreeningReadRepository
             .ToListAsync(cancellationToken);
     }
 
-    public Task<Screening?> GetByIdAsync(Guid screeningId, CancellationToken cancellationToken = default) =>
-        throw new NotImplementedException("Step 17h");
+    public async Task<Screening?> GetByIdAsync(Guid screeningId, CancellationToken cancellationToken = default)
+    {
+        return await _db.Screenings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == screeningId, cancellationToken);
+    }
 }
