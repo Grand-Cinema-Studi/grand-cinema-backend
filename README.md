@@ -33,7 +33,8 @@ src/
 tests/
 ├── GrandCinema.Domain.Tests
 ├── GrandCinema.Application.Tests       tests unitaires des handlers (repository simulé)
-└── GrandCinema.Infrastructure.Tests    tests d'intégration sur un vrai PostgreSQL
+├── GrandCinema.Infrastructure.Tests    tests d'intégration sur un vrai PostgreSQL
+└── GrandCinema.Api.Tests               tests d'API de bout en bout (requête HTTP réelle, PostgreSQL jetable)
 ```
 
 Les dépendances vont toujours vers le centre : `Api → Application → Domain`, et `Infrastructure` implémente les interfaces définies dans `Application`. Le métier se teste donc sans base de données ni serveur web.
@@ -44,7 +45,7 @@ La couche Application est rangée par fonctionnalité (`Features/<Fonctionnalit�
 
 | User story | Contenu | État |
 |---|---|---|
-| US 1.1 | Consulter les films et les horaires | Fait (API : `GET /api/schedule`, `GET /api/movies`) |
+| US 1.1 | Consulter les films et les horaires | Fait côté API : `GET /api/schedule`, `GET /api/movies`, `GET /api/movies/{id}` (fiche d'un film avec toutes ses séances à venir, réservables jusqu'à un an à l'avance) ; fiche du film à faire dans le front |
 | US 2.1 | Créer un compte et se connecter | Fait (API et front) : `POST /api/users` (avec l'acceptation de la politique de confidentialité), `POST /api/tokens`, `GET /api/users/me`, `DELETE /api/users/me` |
 | US 2.2 | Voir les places restantes en temps réel | Fait côté API : `remainingSeats` sur chaque séance de `GET /api/schedule` ; affichage dans le front |
 | US 2.3 | Réserver un nombre de places et passer au paiement | À faire |
@@ -59,6 +60,7 @@ Les user stories, leurs critères d'acceptation, la Definition of Ready et la De
 |---|---|---|
 | `GET` | `/api/schedule?date=AAAA-MM-JJ` | Films et séances d'un jour (aujourd'hui si la date est omise), films triés par titre, séances triées par heure, avec les places restantes de chaque séance (vendues et paiements en cours déduits) |
 | `GET` | `/api/movies` | Films à l'affiche (au moins une séance à venir), triés par titre |
+| `GET` | `/api/movies/{id}` | Un film et toutes ses séances à venir (sans limite de date), regroupées par jour, avec les places restantes ; `404` si le film n'existe pas |
 | `POST` | `/api/users` | Création d'un compte spectateur ; `acceptPrivacyPolicy: true` obligatoire (date et version de la politique enregistrées) ; renvoie un jeton d'accès (`201`) |
 | `POST` | `/api/tokens` | Connexion : renvoie un jeton d'accès (`200`), ou `401` sans préciser si l'adresse ou le mot de passe est faux |
 | `GET` | `/api/users/me` | Profil de l'utilisateur connecté (jeton obligatoire) |
@@ -66,7 +68,7 @@ Les user stories, leurs critères d'acceptation, la Definition of Ready et la De
 | `GET` | `/health` | État de l'application (`Healthy`) |
 | `GET` | `/` | Nom de l'API |
 
-Tout endpoint est réservé aux utilisateurs connectés, sauf ceux déclarés publics (programmation, films à l'affiche, inscription, connexion, `/health`). Dans Swagger, le bouton **Authorize** reçoit le jeton renvoyé par `POST /api/tokens`.
+Tout endpoint est réservé aux utilisateurs connectés, sauf ceux déclarés publics (programmation, films à l'affiche, fiche d'un film, inscription, connexion, `/health`). Une route inconnue répond donc `401` à un visiteur sans jeton, et non `404`. Dans Swagger, le bouton **Authorize** reçoit le jeton renvoyé par `POST /api/tokens`.
 
 En développement, la documentation interactive est sur `/swagger` et le document OpenAPI sur `/openapi/v1.json`. Swagger est désactivé par défaut et s'active par configuration (`Swagger:Enabled`, ou la variable d'environnement `Swagger__Enabled=true`).
 
@@ -122,7 +124,7 @@ dotnet ef database update --project src/GrandCinema.Infrastructure --startup-pro
 bash scripts/reset-demo-screenings.sh
 ```
 
-Le script charge `docs/database/seed-dev.sql` : 10 salles (1 700 places), 125 films réels (114 à l'affiche dans les semaines à venir, 11 qui ne sont plus programmés), plusieurs semaines de séances (1 à 3 par jour et par film), les places de chaque salle, des ventes au guichet sur les séances de 19 h 30 des 7 prochains jours (une séance complète par jour) et deux comptes de démonstration (`manager@grand-cinema.test` / `Manager-Demo-2026!` et `client@grand-cinema.test` / `Client-Demo-2026!`). Les séances sont calculées à partir de la date du jour : relancer le script les remet à jour.
+Le script charge `docs/database/seed-dev.sql` : 10 salles (1 700 places), 125 films réels (114 à l'affiche dans les semaines à venir, 11 qui ne sont plus programmés), plusieurs semaines de séances (1 à 3 par jour et par film), les places de chaque salle, des ventes au guichet sur les séances de 19 h 30 des 7 prochains jours (une séance complète par jour), quatre séances de films de jazz dans 6 mois et dans un an (réservation longtemps à l'avance) et deux comptes de démonstration (`manager@grand-cinema.test` / `Manager-Demo-2026!` et `client@grand-cinema.test` / `Client-Demo-2026!`). Les séances sont calculées à partir de la date du jour : relancer le script les remet à jour.
 
 Les affiches, dates de sortie et durées viennent de [TMDB](https://www.themoviedb.org) : avec `TMDB_TOKEN=<jeton>` dans le `.env` (jeton « API Read Access Token » ou clé d'API d'un compte TMDB), `node --env-file=.env scripts/fetch-tmdb-posters.mjs` (Node 20.6 ou plus) écrit `docs/database/seed-posters.sql`, appliqué ensuite par le script de remise à zéro. Ce produit utilise l'API TMDB mais n'est ni approuvé ni certifié par TMDB.
 
@@ -134,6 +136,7 @@ dotnet run --project src/GrandCinema.Api
 
 - Swagger : http://localhost:5073/swagger
 - Programmation du jour : http://localhost:5073/api/schedule
+- Fiche d'un film (Bird, avec sa séance dans un an) : http://localhost:5073/api/movies/22222222-2222-2222-2222-000000000005
 
 ## Tests
 
