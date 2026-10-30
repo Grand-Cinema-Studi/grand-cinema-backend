@@ -19,7 +19,7 @@ public class MovieReadRepositoryTests : IClassFixture<PostgreSqlFixture>
     public async Task When_movies_have_past_and_upcoming_screenings_Then_only_those_with_an_upcoming_screening_are_returned()
     {
         // Arrange
-        var now = new DateTime(2026, 7, 18, 12, 0, 0);
+        var now = new DateTime(2026, 7, 18, 12, 0, 0, DateTimeKind.Unspecified);
         var room = new Room { Id = Guid.NewGuid(), Name = "Salle 1", Capacity = 170 };
         Movie NewMovie(string title) => new()
         {
@@ -41,10 +41,10 @@ public class MovieReadRepositoryTests : IClassFixture<PostgreSqlFixture>
         {
             seed.Movies.Add(neverScheduled);
             seed.Screenings.AddRange(
-                At(endedThisMorning, new DateTime(2026, 7, 18, 11, 0, 0)),
-                At(startsNow, new DateTime(2026, 7, 18, 12, 0, 0)),
-                At(twiceThisWeek, new DateTime(2026, 7, 19, 18, 0, 0)),
-                At(twiceThisWeek, new DateTime(2026, 7, 20, 18, 0, 0)));
+                At(endedThisMorning, new DateTime(2026, 7, 18, 11, 0, 0, DateTimeKind.Unspecified)),
+                At(startsNow, new DateTime(2026, 7, 18, 12, 0, 0, DateTimeKind.Unspecified)),
+                At(twiceThisWeek, new DateTime(2026, 7, 19, 18, 0, 0, DateTimeKind.Unspecified)),
+                At(twiceThisWeek, new DateTime(2026, 7, 20, 18, 0, 0, DateTimeKind.Unspecified)));
             await seed.SaveChangesAsync();
         }
 
@@ -56,5 +56,31 @@ public class MovieReadRepositoryTests : IClassFixture<PostgreSqlFixture>
 
         // Assert
         result.Select(m => m.Title).ShouldBe(new[] { "Starts now", "Twice this week" }, ignoreOrder: true);
+    }
+
+    [Fact]
+    [Trait("US", "1.1")]
+    [Trait("Category", "Integration")]
+    public async Task When_a_movie_is_asked_for_by_its_id_Then_it_is_returned_and_an_unknown_id_gives_nothing()
+    {
+        // Arrange
+        var movie = new Movie { Id = Guid.NewGuid(), Title = "Blue Note", Synopsis = "A documentary about the jazz label", DurationMinutes = 85, Genre = "Documentary", ReleaseDate = new DateOnly(2018, 1, 1), PosterUrl = "https://example.com/p.jpg" };
+        await using (var seed = _database.CreateDbContext())
+        {
+            seed.Movies.Add(movie);
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = _database.CreateDbContext();
+        var repository = new MovieReadRepository(db);
+
+        // Act
+        var found = await repository.GetByIdAsync(movie.Id);
+        var unknown = await repository.GetByIdAsync(Guid.NewGuid());
+
+        // Assert
+        found.ShouldNotBeNull();
+        found.Title.ShouldBe("Blue Note");
+        unknown.ShouldBeNull();
     }
 }
