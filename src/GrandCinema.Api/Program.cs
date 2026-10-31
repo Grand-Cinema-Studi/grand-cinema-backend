@@ -61,6 +61,7 @@ app.MapMoviesShowingEndpoints();
 app.MapMovieDetailsEndpoints();
 app.MapHoldSeatsEndpoints();
 app.MapGetReservationEndpoints();
+app.MapCancelHoldEndpoints();
 app.MapRegisterUserEndpoints();
 app.MapAuthenticateUserEndpoints();
 app.MapCurrentUserEndpoints();
