@@ -19,8 +19,10 @@ public class GetReservationHandlerTests
     public GetReservationHandlerTests()
     {
         // Held 12 minutes ago: the 10 minutes have run out, but no other hold has marked it "Expired" yet
-        var screening = new Screening { Id = Guid.NewGuid(), StartsAt = new DateTime(2026, 7, 18, 20, 30, 0, DateTimeKind.Unspecified), Price = 9.5m };
+        var screening = new Screening { Id = Guid.NewGuid(), MovieId = Guid.NewGuid(), StartsAt = new DateTime(2026, 7, 18, 20, 30, 0, DateTimeKind.Unspecified), Price = 9.5m };
         _hold = Reservation.Hold(_owner, screening, new[] { new Seat { Id = Guid.NewGuid(), Row = "A", Number = 1 } }, NowUtc.AddMinutes(-12));
+        // As loaded by the repository (Include): the hold knows its screening
+        _hold.Screening = screening;
         _reservations
             .Setup(r => r.GetByIdAsync(_hold.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(_hold);
@@ -42,6 +44,7 @@ public class GetReservationHandlerTests
         result.IsSuccess.ShouldBeTrue();
         result.Value.Status.ShouldBe("Expired");
         result.Value.Seats.ShouldBe(new[] { "A1" });
+        result.Value.MovieId.ShouldBe(_hold.Screening.MovieId);
     }
 
     [Fact]
