@@ -199,4 +199,24 @@ public class ReservationsEndpointsTests
         var hold = await owner.GetFromJsonAsync<JsonElement>(created.Headers.Location);
         hold.GetProperty("status").GetString().ShouldBe("PendingPayment");
     }
+
+    [Fact]
+    [Trait("US", "2.3")]
+    [Trait("Category", "Integration")]
+    public async Task When_a_customer_holds_more_than_10_seats_of_a_screening_in_several_holds_Then_409_seat_limit_reached()
+    {
+        // Arrange: 20 seats; the customer already holds 10 of them (as from a first tab)
+        var screeningId = await ScreeningWithSeatsAsync(20, new DateTime(2031, 5, 28, 20, 30, 0, DateTimeKind.Unspecified));
+        using var client = await SignedInCustomerAsync();
+        var first = await client.PostAsJsonAsync("/api/reservations", new { screeningId, seatCount = 10 });
+        first.EnsureSuccessStatusCode();
+
+        // Act: one more seat, as from a second tab
+        var response = await client.PostAsJsonAsync("/api/reservations", new { screeningId, seatCount = 1 });
+
+        // Assert: refused although 10 seats are still free
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        problem.GetProperty("type").GetString().ShouldBe("/errors/seat-limit-reached");
+    }
 }
