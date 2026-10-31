@@ -52,6 +52,6 @@ public sealed class HoldSeatsHandler : ICommandHandler<HoldSeatsCommand, Result<
             return ReservationErrors.NotEnoughSeats;
         }
 
-        return hold.ToReservationDto(Guid.Empty, nowUtc);
+        return hold.ToReservationDto(screening.MovieId, nowUtc);
     }
 }
