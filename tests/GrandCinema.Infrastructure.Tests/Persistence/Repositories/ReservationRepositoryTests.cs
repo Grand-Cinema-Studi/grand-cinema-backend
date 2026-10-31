@@ -83,6 +83,7 @@ public class ReservationRepositoryTests : IClassFixture<PostgreSqlFixture>
         await using var readDb = _database.CreateDbContext();
         var saved = await new ReservationRepository(readDb).GetByIdAsync(hold.Id);
         saved.ShouldNotBeNull();
+        saved.Screening.ShouldNotBeNull().MovieId.ShouldBe(screening.MovieId);
         saved.UserId.ShouldBe(customer);
         saved.Status.ShouldBe(ReservationStatus.PendingPayment);
         saved.ExpiresAt.ShouldBe(Now.AddMinutes(10));
@@ -155,5 +156,56 @@ public class ReservationRepositoryTests : IClassFixture<PostgreSqlFixture>
         // Assert: without the lock, several holds pick the same first free seat, and the unique index refuses all of them but one
         holds.ShouldAllBe(hold => hold != null);
         holds.SelectMany(hold => hold!.ReservedSeats).Select(reserved => reserved.SeatId).Distinct().Count().ShouldBe(10);
+    }
+
+    [Fact]
+    [Trait("US", "2.3")]
+    [Trait("Category", "Integration")]
+    public async Task When_a_hold_is_cancelled_Then_it_is_marked_cancelled_and_its_seat_can_be_held_again_at_once()
+    {
+        // Arrange: the only seat is held by a first customer
+        var (screening, _) = await ScreeningWithSeatsAsync(("A", 1));
+        var customers = await CustomersAsync(2);
+        Reservation? first;
+        await using (var db = _database.CreateDbContext())
+        {
+            first = await new ReservationRepository(db).TryHoldSeatsAsync(customers[0], screening, 1, Now);
+        }
+
+        first.ShouldNotBeNull();
+
+        // Act
+        await using (var db = _database.CreateDbContext())
+        {
+            (await new ReservationRepository(db).CancelHoldAsync(first.Id)).ShouldBeTrue();
+        }
+
+        // Assert: the hold is kept, cancelled and without seat; the seat is on sale again at once
+        await using var readDb = _database.CreateDbContext();
+        var cancelled = await readDb.Reservations.Include(r => r.ReservedSeats).SingleAsync(r => r.Id == first.Id);
+        cancelled.Status.ShouldBe(ReservationStatus.Cancelled);
+        cancelled.ReservedSeats.ShouldBeEmpty();
+        (await new ReservationRepository(readDb).TryHoldSeatsAsync(customers[1], screening, 1, Now)).ShouldNotBeNull();
+    }
+
+    [Fact]
+    [Trait("US", "2.3")]
+    [Trait("Category", "Integration")]
+    public async Task When_the_reservation_is_paid_Then_it_is_not_cancelled()
+    {
+        // Arrange
+        var (screening, seats) = await ScreeningWithSeatsAsync(("A", 1));
+        var paid = await ReservationAsync(screening, ReservationStatus.Confirmed, null, seats["A1"]);
+        await using var db = _database.CreateDbContext();
+
+        // Act
+        var cancelled = await new ReservationRepository(db).CancelHoldAsync(paid);
+
+        // Assert
+        cancelled.ShouldBeFalse();
+        await using var readDb = _database.CreateDbContext();
+        var kept = await readDb.Reservations.Include(r => r.ReservedSeats).SingleAsync(r => r.Id == paid);
+        kept.Status.ShouldBe(ReservationStatus.Confirmed);
+        kept.ReservedSeats.Count.ShouldBe(1);
     }
 }

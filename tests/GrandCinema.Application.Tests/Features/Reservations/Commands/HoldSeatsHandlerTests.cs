@@ -17,7 +17,7 @@ public class HoldSeatsHandlerTests
     private readonly Mock<IScreeningReadRepository> _screenings = new();
     private readonly Mock<IReservationRepository> _reservations = new();
     private readonly Guid _userId = Guid.NewGuid();
-    private readonly Screening _evening = new() { Id = Guid.NewGuid(), RoomId = Guid.NewGuid(), StartsAt = new DateTime(2026, 7, 18, 20, 30, 0, DateTimeKind.Unspecified), Price = 9.5m };
+    private readonly Screening _evening = new() { Id = Guid.NewGuid(), MovieId = Guid.NewGuid(), RoomId = Guid.NewGuid(), StartsAt = new DateTime(2026, 7, 18, 20, 30, 0, DateTimeKind.Unspecified), Price = 9.5m };
 
     public HoldSeatsHandlerTests()
     {
@@ -120,5 +120,6 @@ public class HoldSeatsHandlerTests
         result.Value.Seats.ShouldBe(new[] { "C4", "C5" });
         result.Value.TotalAmount.ShouldBe(19m);
         result.Value.ExpiresAt.ShouldBe(NowUtc.AddMinutes(10));
+        result.Value.MovieId.ShouldBe(_evening.MovieId);
     }
 }

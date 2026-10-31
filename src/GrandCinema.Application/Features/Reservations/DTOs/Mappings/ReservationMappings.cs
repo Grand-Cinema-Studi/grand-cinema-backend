@@ -5,10 +5,11 @@ namespace GrandCinema.Application.Features.Reservations.DTOs.Mappings;
 
 public static class ReservationMappings
 {
-    public static ReservationDto ToReservationDto(this Reservation reservation, DateTime nowUtc) => new()
+    public static ReservationDto ToReservationDto(this Reservation reservation, Guid movieId, DateTime nowUtc) => new()
     {
         ReservationId = reservation.Id,
         ScreeningId = reservation.ScreeningId,
+        MovieId = movieId,
         // An expired hold is shown as such at once, even before the next hold of the screening marks it "Expired"
         Status = (reservation.HasExpired(nowUtc) ? ReservationStatus.Expired : reservation.Status).ToString(),
         // Rows A to Z, then AA…, as in the room

@@ -77,8 +77,31 @@ public sealed class ReservationRepository : IReservationRepository
     {
         return await _db.Reservations
             .AsNoTracking()
+            .Include(r => r.Screening)
             .Include(r => r.ReservedSeats)
             .ThenInclude(reserved => reserved.Seat)
             .FirstOrDefaultAsync(r => r.Id == reservationId, cancellationToken);
+    }
+
+    public async Task<bool> CancelHoldAsync(Guid reservationId, CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+
+        // Only a hold waiting for payment: PostgreSQL checks the status when it writes,
+        // so a reservation paid in the meantime (US 3.1) is never cancelled
+        var cancelled = await _db.Reservations
+            .Where(r => r.Id == reservationId && r.Status == ReservationStatus.PendingPayment)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(r => r.Status, ReservationStatus.Cancelled), cancellationToken);
+        if (cancelled == 0)
+        {
+            return false;
+        }
+
+        // Its seats go back on sale at once: the unique index (ScreeningId, SeatId) lets another customer hold them
+        await _db.ReservedSeats
+            .Where(reserved => reserved.ReservationId == reservationId)
+            .ExecuteDeleteAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
     }
 }

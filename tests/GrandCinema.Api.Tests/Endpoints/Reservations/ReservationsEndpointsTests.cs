@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using GrandCinema.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
 using Shouldly;
 
 namespace GrandCinema.Api.Tests.Endpoints.Reservations;
@@ -74,6 +75,12 @@ public class ReservationsEndpointsTests
         var reservationId = hold.GetProperty("reservationId").GetString();
         response.Headers.Location?.ToString().ShouldBe($"/api/reservations/{reservationId}");
         hold.GetProperty("status").GetString().ShouldBe("PendingPayment");
+        // The movie of the screening: the front goes back to its page
+        await using (var db = _api.CreateDbContext())
+        {
+            var movieId = (await db.Screenings.SingleAsync(s => s.Id == screeningId)).MovieId;
+            hold.GetProperty("movieId").GetGuid().ShouldBe(movieId);
+        }
         hold.GetProperty("seats").EnumerateArray().Select(seat => seat.GetString()).ShouldBe(new[] { "A1", "A2" });
         hold.GetProperty("totalAmount").GetDecimal().ShouldBe(19m);
         // An instant in UTC ("Z"), 10 minutes after the request
@@ -148,5 +155,48 @@ public class ReservationsEndpointsTests
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
         var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
         problem.GetProperty("type").GetString().ShouldBe("/errors/reservation-not-found");
+    }
+
+    [Fact]
+    [Trait("US", "2.3")]
+    [Trait("Category", "Integration")]
+    public async Task When_the_owner_cancels_the_hold_Then_204_and_the_seats_are_on_sale_again_at_once()
+    {
+        // Arrange: the 2 seats of the screening are held
+        var screeningId = await ScreeningWithSeatsAsync(2, new DateTime(2031, 5, 26, 20, 30, 0, DateTimeKind.Unspecified));
+        using var client = await SignedInCustomerAsync();
+        var created = await client.PostAsJsonAsync("/api/reservations", new { screeningId, seatCount = 2 });
+        created.EnsureSuccessStatusCode();
+
+        // Act
+        var response = await client.DeleteAsync(created.Headers.Location);
+
+        // Assert: without waiting for the 10 minutes
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var schedule = await client.GetFromJsonAsync<JsonElement>("/api/schedule?date=2031-05-26");
+        schedule.GetProperty("movies")[0].GetProperty("screenings")[0].GetProperty("remainingSeats").GetInt32().ShouldBe(2);
+        var hold = await client.GetFromJsonAsync<JsonElement>(created.Headers.Location);
+        hold.GetProperty("status").GetString().ShouldBe("Cancelled");
+    }
+
+    [Fact]
+    [Trait("US", "2.3")]
+    [Trait("Category", "Integration")]
+    public async Task When_another_customer_cancels_the_hold_Then_404_and_the_seats_stay_held()
+    {
+        // Arrange
+        var screeningId = await ScreeningWithSeatsAsync(2, new DateTime(2031, 5, 27, 20, 30, 0, DateTimeKind.Unspecified));
+        using var owner = await SignedInCustomerAsync();
+        using var other = await SignedInCustomerAsync();
+        var created = await owner.PostAsJsonAsync("/api/reservations", new { screeningId, seatCount = 1 });
+        created.EnsureSuccessStatusCode();
+
+        // Act
+        var response = await other.DeleteAsync(created.Headers.Location);
+
+        // Assert: same answer as an unknown reservation, and the hold of the owner is untouched
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        var hold = await owner.GetFromJsonAsync<JsonElement>(created.Headers.Location);
+        hold.GetProperty("status").GetString().ShouldBe("PendingPayment");
     }
 }
