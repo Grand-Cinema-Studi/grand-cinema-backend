@@ -48,7 +48,7 @@ La couche Application est rangée par fonctionnalité (`Features/<Fonctionnalit�
 | US 1.1 | Consulter les films et les horaires | Fait côté API : `GET /api/schedule`, `GET /api/movies`, `GET /api/movies/{id}` (fiche d'un film avec toutes ses séances à venir, réservables jusqu'à un an à l'avance) ; fiche du film à faire dans le front |
 | US 2.1 | Créer un compte et se connecter | Fait (API et front) : `POST /api/users` (avec l'acceptation de la politique de confidentialité), `POST /api/tokens`, `GET /api/users/me`, `DELETE /api/users/me` |
 | US 2.2 | Voir les places restantes en temps réel | Fait côté API : `remainingSeats` sur chaque séance de `GET /api/schedule` ; affichage dans le front |
-| US 2.3 | Réserver un nombre de places et passer au paiement | Fait côté API : `POST /api/reservations` (blocage de 10 minutes, sans double vente), `GET /api/reservations/{id}` ; écran dans le front ; paiement avec l'US 3.1 |
+| US 2.3 | Réserver un nombre de places et passer au paiement | Fait côté API : `POST /api/reservations` (blocage de 10 minutes, sans double vente), `GET /api/reservations/{id}`, `DELETE /api/reservations/{id}` (annulation avant paiement, places remises en vente aussitôt) ; écran dans le front ; paiement avec l'US 3.1 |
 | US 5.2 | Gérer la programmation | À faire |
 | US 5.3 | Suivre les réservations | À faire |
 
@@ -66,7 +66,8 @@ Les user stories, leurs critères d'acceptation, la Definition of Ready et la De
 | `GET` | `/api/users/me` | Profil de l'utilisateur connecté (jeton obligatoire) |
 | `DELETE` | `/api/users/me` | Suppression du compte de l'utilisateur connecté (`204`, droit à l'effacement) ; ses réservations sont gardées pour la comptabilité, sans lien avec le compte |
 | `POST` | `/api/reservations` | Blocage de 1 à 10 places d'une séance pendant 10 minutes, pour l'utilisateur connecté ; places attribuées par le cinéma ; `409` s'il n'en reste pas assez (y compris pour le second de deux clients sur la dernière place) ou si la séance a commencé |
-| `GET` | `/api/reservations/{id}` | Un blocage ou une réservation de l'utilisateur connecté, avec ses places et son statut (`PendingPayment`, `Expired`, `Confirmed`) ; `404` pour celle d'un autre |
+| `DELETE` | `/api/reservations/{id}` | Annulation d'un blocage par son propriétaire, avant paiement (`204`) : places remises en vente aussitôt ; `404` pour celui d'un autre, `409` pour une réservation payée |
+| `GET` | `/api/reservations/{id}` | Un blocage ou une réservation de l'utilisateur connecté, avec son film, ses places et son statut (`PendingPayment`, `Expired`, `Cancelled`, `Confirmed`) ; `404` pour celle d'un autre |
 | `GET` | `/health` | État de l'application (`Healthy`) |
 | `GET` | `/` | Nom de l'API |
 
