@@ -26,6 +26,6 @@ public sealed class GetReservationHandler : IQueryHandler<GetReservationQuery, R
             return ReservationErrors.ReservationNotFound;
         }
 
-        return reservation.ToReservationDto(_timeProvider.GetUtcNow().UtcDateTime);
+        return reservation.ToReservationDto(Guid.Empty, _timeProvider.GetUtcNow().UtcDateTime);
     }
 }

@@ -81,4 +81,7 @@ public sealed class ReservationRepository : IReservationRepository
             .ThenInclude(reserved => reserved.Seat)
             .FirstOrDefaultAsync(r => r.Id == reservationId, cancellationToken);
     }
+
+    public Task<bool> CancelHoldAsync(Guid reservationId, CancellationToken cancellationToken = default) =>
+        throw new NotImplementedException();
 }

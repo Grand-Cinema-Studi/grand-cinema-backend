@@ -13,4 +13,10 @@ public interface IReservationRepository
 
     /// <summary>The reservation with its seats, or null.</summary>
     Task<Reservation?> GetByIdAsync(Guid reservationId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Cancels a hold waiting for payment and frees its seats at once.
+    /// Returns false when the reservation is not waiting for payment (paid, expired and cleaned, already cancelled).
+    /// </summary>
+    Task<bool> CancelHoldAsync(Guid reservationId, CancellationToken cancellationToken = default);
 }
