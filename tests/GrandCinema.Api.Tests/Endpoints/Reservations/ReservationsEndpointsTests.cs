@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using GrandCinema.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -39,6 +40,25 @@ public class ReservationsEndpointsTests
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return client;
     }
+
+    // A hold of all the seats of a new screening, as the front makes it: the client of its owner (to dispose), its address, its identifier
+    private async Task<(HttpClient Client, Uri Location, string ReservationId)> HoldAsync(int seatCount, DateTime startsAt)
+    {
+        var screeningId = await ScreeningWithSeatsAsync(seatCount, startsAt);
+        var client = await SignedInCustomerAsync();
+        var created = await client.PostAsJsonAsync("/api/reservations", new { screeningId, seatCount });
+        created.EnsureSuccessStatusCode();
+        var hold = await created.Content.ReadFromJsonAsync<JsonElement>();
+        return (client, created.Headers.Location!, hold.GetProperty("reservationId").GetString()!);
+    }
+
+    // What Stripe sends: no access token, the signature in the Stripe-Signature header
+    private static HttpRequestMessage StripeNotification(string payload, string signature) =>
+        new(HttpMethod.Post, "/api/payments/stripe-webhook")
+        {
+            Content = new StringContent(payload, Encoding.UTF8, "application/json"),
+            Headers = { { "Stripe-Signature", signature } }
+        };
 
     [Fact]
     [Trait("US", "2.3")]
@@ -218,5 +238,81 @@ public class ReservationsEndpointsTests
         response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
         var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
         problem.GetProperty("type").GetString().ShouldBe("/errors/seat-limit-reached");
+    }
+
+    [Fact]
+    [Trait("US", "3.1")]
+    [Trait("Category", "Integration")]
+    public async Task When_the_customer_accepts_the_terms_of_sale_Then_200_and_the_address_of_the_payment_page()
+    {
+        // Arrange
+        var hold = await HoldAsync(2, new DateTime(2031, 5, 29, 20, 30, 0, DateTimeKind.Unspecified));
+        using var client = hold.Client;
+
+        // Act
+        var response = await client.PostAsJsonAsync($"{hold.Location}/payment", new { acceptTermsOfSale = true });
+
+        // Assert: the front sends the customer to this page, where the card is typed
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var page = await response.Content.ReadFromJsonAsync<JsonElement>();
+        page.GetProperty("checkoutUrl").GetString().ShouldBe($"https://checkout.example/{hold.ReservationId}");
+    }
+
+    [Fact]
+    [Trait("US", "3.1")]
+    [Trait("Category", "Integration")]
+    public async Task When_the_terms_of_sale_are_not_accepted_Then_400()
+    {
+        // Arrange
+        var hold = await HoldAsync(2, new DateTime(2031, 5, 30, 20, 30, 0, DateTimeKind.Unspecified));
+        using var client = hold.Client;
+
+        // Act
+        var response = await client.PostAsJsonAsync($"{hold.Location}/payment", new { acceptTermsOfSale = false });
+
+        // Assert: criterion 4, the field in error is named for the front
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        problem.GetProperty("errors").TryGetProperty("acceptTermsOfSale", out _).ShouldBeTrue();
+    }
+
+    [Fact]
+    [Trait("US", "3.1")]
+    [Trait("Category", "Integration")]
+    public async Task When_stripe_notifies_the_payment_Then_the_reservation_is_confirmed_and_its_seats_stay_sold()
+    {
+        // Arrange: the 2 seats of the screening are held
+        var hold = await HoldAsync(2, new DateTime(2031, 5, 31, 20, 30, 0, DateTimeKind.Unspecified));
+        using var client = hold.Client;
+        using var stripe = _api.CreateVisitorClient();
+
+        // Act
+        var response = await stripe.SendAsync(StripeNotification(hold.ReservationId, FakePaymentGateway.ValidSignature));
+
+        // Assert: criterion 1, the reservation is recorded and its seats are sold
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var reservation = await client.GetFromJsonAsync<JsonElement>(hold.Location);
+        reservation.GetProperty("status").GetString().ShouldBe("Confirmed");
+        var schedule = await client.GetFromJsonAsync<JsonElement>("/api/schedule?date=2031-05-31");
+        schedule.GetProperty("movies")[0].GetProperty("screenings")[0].GetProperty("remainingSeats").GetInt32().ShouldBe(0);
+    }
+
+    [Fact]
+    [Trait("US", "3.1")]
+    [Trait("Category", "Integration")]
+    public async Task When_the_notification_is_not_signed_by_stripe_Then_400_and_nothing_is_confirmed()
+    {
+        // Arrange
+        var hold = await HoldAsync(1, new DateTime(2031, 6, 1, 20, 30, 0, DateTimeKind.Unspecified));
+        using var client = hold.Client;
+        using var attacker = _api.CreateVisitorClient();
+
+        // Act: a forged notification, without the signature of Stripe
+        var response = await attacker.SendAsync(StripeNotification(hold.ReservationId, "t=1,v1=forged"));
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        var reservation = await client.GetFromJsonAsync<JsonElement>(hold.Location);
+        reservation.GetProperty("status").GetString().ShouldBe("PendingPayment");
     }
 }
