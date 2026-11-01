@@ -17,6 +17,12 @@ public class Reservation
     public DateTime CreatedAt { get; set; }
     public DateTime? ExpiresAt { get; set; }
     public decimal TotalAmount { get; set; }
+    public DateTime? PaidAt { get; set; }
+    // Identifier of the payment at Stripe
+    public string? PaymentReference { get; set; }
+    // proof that the terms of sale were accepted before paying, and which version
+    public DateTime? TermsOfSaleAcceptedAt { get; set; }
+    public string? TermsOfSaleVersion { get; set; }
     public ICollection<ReservedSeat> ReservedSeats { get; set; } = new List<ReservedSeat>();
     public Screening Screening { get; set; } = null!;
 

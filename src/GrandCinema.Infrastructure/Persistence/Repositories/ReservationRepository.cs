@@ -118,4 +118,10 @@ public sealed class ReservationRepository : IReservationRepository
         await transaction.CommitAsync(cancellationToken);
         return true;
     }
+
+    public Task RecordTermsOfSaleAsync(Guid reservationId, string version, DateTime nowUtc, CancellationToken cancellationToken = default) =>
+        throw new NotImplementedException();
+
+    public Task<PaymentConfirmation> ConfirmPaymentAsync(Guid reservationId, string paymentReference, DateTime nowUtc, CancellationToken cancellationToken = default) =>
+        throw new NotImplementedException();
 }
