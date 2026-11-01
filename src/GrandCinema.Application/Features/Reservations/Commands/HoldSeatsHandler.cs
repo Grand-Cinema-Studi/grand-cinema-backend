@@ -47,6 +47,10 @@ public sealed class HoldSeatsHandler : ICommandHandler<HoldSeatsCommand, Result<
 
         var nowUtc = _timeProvider.GetUtcNow().UtcDateTime;
         var result = await _reservationRepository.TryHoldSeatsAsync(command.UserId, screening, command.SeatCount, nowUtc, cancellationToken);
+        if (result.Refusal == HoldRefusal.SeatLimitReached)
+        {
+            return ReservationErrors.SeatLimitReached;
+        }
         if (result.Hold is null)
         {
             return ReservationErrors.NotEnoughSeats;
