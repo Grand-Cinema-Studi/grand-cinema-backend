@@ -40,7 +40,21 @@ public sealed class ReservationRepository : IReservationRepository
                 .ExecuteUpdateAsync(setters => setters.SetProperty(r => r.Status, ReservationStatus.Expired), cancellationToken);
         }
 
-        // 3. The first free seats of the room: rows A to Z, then AA…, by number
+        // 3. At most 10 seats per customer and per screening, held or paid, counted under the lock,
+        //    so that two tabs of the same customer cannot both pass. After step 2, every hold left is still valid.
+        var seatsOfCustomer = await _db.ReservedSeats
+            .CountAsync(reserved => reserved.ScreeningId == screening.Id
+                && reserved.Reservation.UserId == userId
+                && (reserved.Reservation.Status == ReservationStatus.Confirmed || reserved.Reservation.Status == ReservationStatus.PendingPayment),
+                cancellationToken);
+        if (seatsOfCustomer + seatCount > Reservation.MaximumSeatsPerCustomer)
+        {
+            // The release of the expired holds is kept, even when this hold is refused
+            await transaction.CommitAsync(cancellationToken);
+            return HoldResult.Refused(HoldRefusal.SeatLimitReached);
+        }
+
+        // 4. The first free seats of the room: rows A to Z, then AA…, by number
         var freeSeats = await _db.Seats
             .Where(seat => seat.RoomId == screening.RoomId
                 && !_db.ReservedSeats.Any(reserved => reserved.ScreeningId == screening.Id && reserved.SeatId == seat.Id))
@@ -56,7 +70,7 @@ public sealed class ReservationRepository : IReservationRepository
             return HoldResult.Refused(HoldRefusal.NotEnoughSeats);
         }
 
-        // 4. Save the hold; the commit releases the lock
+        // 5. Save the hold; the commit releases the lock
         var hold = Reservation.Hold(userId, screening, freeSeats, nowUtc);
         _db.Reservations.Add(hold);
         try
