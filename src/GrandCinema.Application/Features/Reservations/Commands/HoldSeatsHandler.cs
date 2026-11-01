@@ -3,13 +3,14 @@ using GrandCinema.Application.Abstractions.Persistence;
 using GrandCinema.Application.Abstractions.Results;
 using GrandCinema.Application.Features.Reservations.DTOs;
 using GrandCinema.Application.Features.Reservations.DTOs.Mappings;
+using GrandCinema.Domain.Entities;
 
 namespace GrandCinema.Application.Features.Reservations.Commands;
 
 public sealed class HoldSeatsHandler : ICommandHandler<HoldSeatsCommand, Result<ReservationDto>>
 {
     // Decision of the Product Owner (US 2.3, criterion 7): one customer cannot block a whole room for 10 minutes.
-    public const int MaximumSeatCount = 10;
+    public const int MaximumSeatCount = Reservation.MaximumSeatsPerCustomer;
 
     private readonly IScreeningReadRepository _screeningReadRepository;
     private readonly IReservationRepository _reservationRepository;
@@ -44,14 +45,13 @@ public sealed class HoldSeatsHandler : ICommandHandler<HoldSeatsCommand, Result<
             return ReservationErrors.ScreeningStarted;
         }
 
-        // A hold expires at an instant in UTC (step 15: two clocks)
         var nowUtc = _timeProvider.GetUtcNow().UtcDateTime;
-        var hold = await _reservationRepository.TryHoldSeatsAsync(command.UserId, screening, command.SeatCount, nowUtc, cancellationToken);
-        if (hold is null)
+        var result = await _reservationRepository.TryHoldSeatsAsync(command.UserId, screening, command.SeatCount, nowUtc, cancellationToken);
+        if (result.Hold is null)
         {
             return ReservationErrors.NotEnoughSeats;
         }
 
-        return hold.ToReservationDto(screening.MovieId, nowUtc);
+        return result.Hold.ToReservationDto(screening.MovieId, nowUtc);
     }
 }

@@ -90,7 +90,7 @@ public class HoldSeatsHandlerTests
         // Arrange: the repository finds fewer free seats than asked
         _reservations
             .Setup(r => r.TryHoldSeatsAsync(_userId, _evening, 3, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Reservation?)null);
+            .ReturnsAsync(HoldResult.Refused(HoldRefusal.NotEnoughSeats));
         var handler = CreateHandler();
 
         // Act
@@ -108,7 +108,7 @@ public class HoldSeatsHandlerTests
         var seats = new[] { new Seat { Id = Guid.NewGuid(), Row = "C", Number = 5 }, new Seat { Id = Guid.NewGuid(), Row = "C", Number = 4 } };
         _reservations
             .Setup(r => r.TryHoldSeatsAsync(_userId, _evening, 2, NowUtc, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Reservation.Hold(_userId, _evening, seats, NowUtc));
+            .ReturnsAsync(HoldResult.Held(Reservation.Hold(_userId, _evening, seats, NowUtc)));
         var handler = CreateHandler();
 
         // Act

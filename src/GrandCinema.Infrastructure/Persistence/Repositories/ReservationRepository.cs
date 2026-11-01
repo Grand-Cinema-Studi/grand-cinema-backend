@@ -15,7 +15,7 @@ public sealed class ReservationRepository : IReservationRepository
         _db = db;
     }
 
-    public async Task<Reservation?> TryHoldSeatsAsync(Guid userId, Screening screening, int seatCount, DateTime nowUtc, CancellationToken cancellationToken = default)
+    public async Task<HoldResult> TryHoldSeatsAsync(Guid userId, Screening screening, int seatCount, DateTime nowUtc, CancellationToken cancellationToken = default)
     {
         await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
 
@@ -53,7 +53,7 @@ public sealed class ReservationRepository : IReservationRepository
         {
             // The release of the expired holds is kept, even when this hold is refused
             await transaction.CommitAsync(cancellationToken);
-            return null;
+            return HoldResult.Refused(HoldRefusal.NotEnoughSeats);
         }
 
         // 4. Save the hold; the commit releases the lock
@@ -66,11 +66,11 @@ public sealed class ReservationRepository : IReservationRepository
         // Last line of defence: the unique index refuses a seat sold twice, whatever the code above does (bug 0001)
         catch (DbUpdateException exception) when (exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
-            return null;
+            return HoldResult.Refused(HoldRefusal.NotEnoughSeats);
         }
 
         await transaction.CommitAsync(cancellationToken);
-        return hold;
+        return HoldResult.Held(hold);
     }
 
     public async Task<Reservation?> GetByIdAsync(Guid reservationId, CancellationToken cancellationToken = default)
