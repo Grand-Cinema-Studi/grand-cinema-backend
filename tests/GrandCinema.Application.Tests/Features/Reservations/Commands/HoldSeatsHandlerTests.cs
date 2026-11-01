@@ -122,4 +122,21 @@ public class HoldSeatsHandlerTests
         result.Value.ExpiresAt.ShouldBe(NowUtc.AddMinutes(10));
         result.Value.MovieId.ShouldBe(_evening.MovieId);
     }
+
+    [Fact]
+    [Trait("US", "2.3")]
+    public async Task When_the_customer_already_has_too_many_seats_Then_seat_limit_reached()
+    {
+        // Arrange: the repository counts the seats of the customer under the lock, and refuses
+        _reservations
+            .Setup(r => r.TryHoldSeatsAsync(_userId, _evening, 2, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(HoldResult.Refused(HoldRefusal.SeatLimitReached));
+        var handler = CreateHandler();
+
+        // Act
+        var result = await handler.Handle(new HoldSeatsCommand(_userId, _evening.Id, 2));
+
+        // Assert
+        result.Error.ShouldBe(ReservationErrors.SeatLimitReached);
+    }
 }
