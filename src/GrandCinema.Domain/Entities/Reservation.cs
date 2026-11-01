@@ -4,8 +4,10 @@ namespace GrandCinema.Domain.Entities;
 
 public class Reservation
 {
-    // EPIC 2 rule: seats are held while the customer pays, then freed after 10 minutes (US 2.3).
+    // Seats are held while the customer pays, then freed after 10 minutes.
     public static readonly TimeSpan HoldDuration = TimeSpan.FromMinutes(10);
+    // At most 10 seats per customer and per screening, held or paid.
+    public const int MaximumSeatsPerCustomer = 10;
 
     public Guid Id { get; set; }
     public Guid? UserId { get; set; }

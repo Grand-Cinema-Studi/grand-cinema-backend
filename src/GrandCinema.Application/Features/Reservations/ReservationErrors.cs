@@ -1,4 +1,5 @@
 using GrandCinema.Application.Abstractions.Results;
+using GrandCinema.Domain.Entities;
 
 namespace GrandCinema.Application.Features.Reservations;
 
@@ -22,4 +23,8 @@ public static class ReservationErrors
     // A paid reservation is not cancelled online: refunds follow the terms of sale (US 3.1).
     public static readonly Error ReservationConfirmed =
         Error.Conflict("reservation-confirmed", "A paid reservation cannot be cancelled online.");
+
+    // US 2.3, criterion 7: also when several holds of the same customer (several tabs) would add up to more than 10 seats.
+    public static readonly Error SeatLimitReached =
+        Error.Conflict("seat-limit-reached", $"At most {Reservation.MaximumSeatsPerCustomer} seats per customer and per screening, held or paid.");
 }

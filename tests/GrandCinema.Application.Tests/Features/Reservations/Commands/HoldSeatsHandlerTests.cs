@@ -90,7 +90,7 @@ public class HoldSeatsHandlerTests
         // Arrange: the repository finds fewer free seats than asked
         _reservations
             .Setup(r => r.TryHoldSeatsAsync(_userId, _evening, 3, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Reservation?)null);
+            .ReturnsAsync(HoldResult.Refused(HoldRefusal.NotEnoughSeats));
         var handler = CreateHandler();
 
         // Act
@@ -108,7 +108,7 @@ public class HoldSeatsHandlerTests
         var seats = new[] { new Seat { Id = Guid.NewGuid(), Row = "C", Number = 5 }, new Seat { Id = Guid.NewGuid(), Row = "C", Number = 4 } };
         _reservations
             .Setup(r => r.TryHoldSeatsAsync(_userId, _evening, 2, NowUtc, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Reservation.Hold(_userId, _evening, seats, NowUtc));
+            .ReturnsAsync(HoldResult.Held(Reservation.Hold(_userId, _evening, seats, NowUtc)));
         var handler = CreateHandler();
 
         // Act
@@ -121,5 +121,22 @@ public class HoldSeatsHandlerTests
         result.Value.TotalAmount.ShouldBe(19m);
         result.Value.ExpiresAt.ShouldBe(NowUtc.AddMinutes(10));
         result.Value.MovieId.ShouldBe(_evening.MovieId);
+    }
+
+    [Fact]
+    [Trait("US", "2.3")]
+    public async Task When_the_customer_already_has_too_many_seats_Then_seat_limit_reached()
+    {
+        // Arrange: the repository counts the seats of the customer under the lock, and refuses
+        _reservations
+            .Setup(r => r.TryHoldSeatsAsync(_userId, _evening, 2, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(HoldResult.Refused(HoldRefusal.SeatLimitReached));
+        var handler = CreateHandler();
+
+        // Act
+        var result = await handler.Handle(new HoldSeatsCommand(_userId, _evening.Id, 2));
+
+        // Assert
+        result.Error.ShouldBe(ReservationErrors.SeatLimitReached);
     }
 }

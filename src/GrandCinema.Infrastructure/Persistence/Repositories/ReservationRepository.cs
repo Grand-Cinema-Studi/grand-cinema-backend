@@ -15,7 +15,7 @@ public sealed class ReservationRepository : IReservationRepository
         _db = db;
     }
 
-    public async Task<Reservation?> TryHoldSeatsAsync(Guid userId, Screening screening, int seatCount, DateTime nowUtc, CancellationToken cancellationToken = default)
+    public async Task<HoldResult> TryHoldSeatsAsync(Guid userId, Screening screening, int seatCount, DateTime nowUtc, CancellationToken cancellationToken = default)
     {
         await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
 
@@ -40,7 +40,21 @@ public sealed class ReservationRepository : IReservationRepository
                 .ExecuteUpdateAsync(setters => setters.SetProperty(r => r.Status, ReservationStatus.Expired), cancellationToken);
         }
 
-        // 3. The first free seats of the room: rows A to Z, then AA…, by number
+        // 3. At most 10 seats per customer and per screening, held or paid, counted under the lock,
+        //    so that two tabs of the same customer cannot both pass. After step 2, every hold left is still valid.
+        var seatsOfCustomer = await _db.ReservedSeats
+            .CountAsync(reserved => reserved.ScreeningId == screening.Id
+                && reserved.Reservation.UserId == userId
+                && (reserved.Reservation.Status == ReservationStatus.Confirmed || reserved.Reservation.Status == ReservationStatus.PendingPayment),
+                cancellationToken);
+        if (seatsOfCustomer + seatCount > Reservation.MaximumSeatsPerCustomer)
+        {
+            // The release of the expired holds is kept, even when this hold is refused
+            await transaction.CommitAsync(cancellationToken);
+            return HoldResult.Refused(HoldRefusal.SeatLimitReached);
+        }
+
+        // 4. The first free seats of the room: rows A to Z, then AA…, by number
         var freeSeats = await _db.Seats
             .Where(seat => seat.RoomId == screening.RoomId
                 && !_db.ReservedSeats.Any(reserved => reserved.ScreeningId == screening.Id && reserved.SeatId == seat.Id))
@@ -53,10 +67,10 @@ public sealed class ReservationRepository : IReservationRepository
         {
             // The release of the expired holds is kept, even when this hold is refused
             await transaction.CommitAsync(cancellationToken);
-            return null;
+            return HoldResult.Refused(HoldRefusal.NotEnoughSeats);
         }
 
-        // 4. Save the hold; the commit releases the lock
+        // 5. Save the hold; the commit releases the lock
         var hold = Reservation.Hold(userId, screening, freeSeats, nowUtc);
         _db.Reservations.Add(hold);
         try
@@ -66,11 +80,11 @@ public sealed class ReservationRepository : IReservationRepository
         // Last line of defence: the unique index refuses a seat sold twice, whatever the code above does (bug 0001)
         catch (DbUpdateException exception) when (exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
-            return null;
+            return HoldResult.Refused(HoldRefusal.NotEnoughSeats);
         }
 
         await transaction.CommitAsync(cancellationToken);
-        return hold;
+        return HoldResult.Held(hold);
     }
 
     public async Task<Reservation?> GetByIdAsync(Guid reservationId, CancellationToken cancellationToken = default)

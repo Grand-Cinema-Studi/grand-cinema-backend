@@ -1,3 +1,4 @@
+using GrandCinema.Application.Abstractions.Persistence;
 using GrandCinema.Domain.Entities;
 using GrandCinema.Domain.Enums;
 using GrandCinema.Infrastructure.Persistence.Repositories;
@@ -31,9 +32,11 @@ public class ReservationRepositoryTests : IClassFixture<PostgreSqlFixture>
     }
 
     // Identifiers only: the screening and the seats already exist and must not be inserted again
-    private async Task<Guid> ReservationAsync(Screening screening, ReservationStatus status, DateTime? expiresAt, params Seat[] seats)
+    private Task<Guid> ReservationAsync(Screening screening, ReservationStatus status, DateTime? expiresAt, params Seat[] seats) =>
+        ReservationOfAsync(null, screening, status, expiresAt, seats);
+    private async Task<Guid> ReservationOfAsync(Guid? userId, Screening screening, ReservationStatus status, DateTime? expiresAt, params Seat[] seats)
     {
-        var reservation = new Reservation { Id = Guid.NewGuid(), ScreeningId = screening.Id, Status = status, CreatedAt = Now.AddMinutes(-20), ExpiresAt = expiresAt, TotalAmount = 9.5m * seats.Length };
+        var reservation = new Reservation { Id = Guid.NewGuid(), UserId = userId, ScreeningId = screening.Id, Status = status, CreatedAt = Now.AddMinutes(-20), ExpiresAt = expiresAt, TotalAmount = 9.5m * seats.Length };
         foreach (var seat in seats)
         {
             reservation.ReservedSeats.Add(new ReservedSeat { SeatId = seat.Id, ScreeningId = screening.Id });
@@ -76,7 +79,7 @@ public class ReservationRepositoryTests : IClassFixture<PostgreSqlFixture>
         await using var db = _database.CreateDbContext();
 
         // Act
-        var hold = await new ReservationRepository(db).TryHoldSeatsAsync(customer, screening, 2, Now);
+        var hold = (await new ReservationRepository(db).TryHoldSeatsAsync(customer, screening, 2, Now)).Hold;
 
         // Assert: A2 then B1; AA1 comes after Z, and the sold A1 is skipped
         hold.ShouldNotBeNull();
@@ -102,10 +105,10 @@ public class ReservationRepositoryTests : IClassFixture<PostgreSqlFixture>
         await using var db = _database.CreateDbContext();
 
         // Act
-        var hold = await new ReservationRepository(db).TryHoldSeatsAsync(customer, screening, 2, Now);
+        var result = await new ReservationRepository(db).TryHoldSeatsAsync(customer, screening, 2, Now);
 
         // Assert: no partial hold
-        hold.ShouldBeNull();
+        result.Refusal.ShouldBe(HoldRefusal.NotEnoughSeats);
         await using var readDb = _database.CreateDbContext();
         (await readDb.Reservations.CountAsync(r => r.ScreeningId == screening.Id)).ShouldBe(1);
     }
@@ -122,7 +125,7 @@ public class ReservationRepositoryTests : IClassFixture<PostgreSqlFixture>
         await using var db = _database.CreateDbContext();
 
         // Act
-        var hold = await new ReservationRepository(db).TryHoldSeatsAsync(customer, screening, 1, Now);
+        var hold = (await new ReservationRepository(db).TryHoldSeatsAsync(customer, screening, 1, Now)).Hold;
 
         // Assert: the seat goes to the new customer; the abandoned hold is kept, expired and without seat
         hold.ShouldNotBeNull();
@@ -148,7 +151,7 @@ public class ReservationRepositoryTests : IClassFixture<PostgreSqlFixture>
         {
             await using var db = _database.CreateDbContext();
             await start.Task;
-            return await new ReservationRepository(db).TryHoldSeatsAsync(customer, screening, 1, Now);
+            return (await new ReservationRepository(db).TryHoldSeatsAsync(customer, screening, 1, Now)).Hold;
         })).ToList();
         start.SetResult();
         var holds = await Task.WhenAll(holding);
@@ -169,7 +172,7 @@ public class ReservationRepositoryTests : IClassFixture<PostgreSqlFixture>
         Reservation? first;
         await using (var db = _database.CreateDbContext())
         {
-            first = await new ReservationRepository(db).TryHoldSeatsAsync(customers[0], screening, 1, Now);
+            first = (await new ReservationRepository(db).TryHoldSeatsAsync(customers[0], screening, 1, Now)).Hold;
         }
 
         first.ShouldNotBeNull();
@@ -185,7 +188,7 @@ public class ReservationRepositoryTests : IClassFixture<PostgreSqlFixture>
         var cancelled = await readDb.Reservations.Include(r => r.ReservedSeats).SingleAsync(r => r.Id == first.Id);
         cancelled.Status.ShouldBe(ReservationStatus.Cancelled);
         cancelled.ReservedSeats.ShouldBeEmpty();
-        (await new ReservationRepository(readDb).TryHoldSeatsAsync(customers[1], screening, 1, Now)).ShouldNotBeNull();
+        (await new ReservationRepository(readDb).TryHoldSeatsAsync(customers[1], screening, 1, Now)).Hold.ShouldNotBeNull();
     }
 
     [Fact]
@@ -207,5 +210,53 @@ public class ReservationRepositoryTests : IClassFixture<PostgreSqlFixture>
         var kept = await readDb.Reservations.Include(r => r.ReservedSeats).SingleAsync(r => r.Id == paid);
         kept.Status.ShouldBe(ReservationStatus.Confirmed);
         kept.ReservedSeats.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    [Trait("US", "2.3")]
+    [Trait("Category", "Integration")]
+    public async Task When_a_customer_already_has_paid_and_held_seats_Then_no_more_than_10_in_all_for_the_screening()
+    {
+        // Arrange: 16 seats. The customer has paid 4 seats, holds 3, and had held 5 that expired (they no longer count)
+        var (screening, seats) = await ScreeningWithSeatsAsync(Enumerable.Range(1, 16).Select(number => ("A", number)).ToArray());
+        var customer = (await CustomersAsync(1))[0];
+        await ReservationOfAsync(customer, screening, ReservationStatus.Confirmed, null, seats["A1"], seats["A2"], seats["A3"], seats["A4"]);
+        await ReservationOfAsync(customer, screening, ReservationStatus.PendingPayment, Now.AddMinutes(5), seats["A5"], seats["A6"], seats["A7"]);
+        await ReservationOfAsync(customer, screening, ReservationStatus.PendingPayment, Now.AddMinutes(-1), seats["A8"], seats["A9"], seats["A10"], seats["A11"], seats["A12"]);
+        await using var db = _database.CreateDbContext();
+        var repository = new ReservationRepository(db);
+
+        // Act: 4 more would make 11; 3 more make exactly 10
+        var tooMany = await repository.TryHoldSeatsAsync(customer, screening, 4, Now);
+        var exactly10 = await repository.TryHoldSeatsAsync(customer, screening, 3, Now);
+
+        // Assert
+        tooMany.Refusal.ShouldBe(HoldRefusal.SeatLimitReached);
+        exactly10.Hold.ShouldNotBeNull();
+    }
+
+    [Fact]
+    [Trait("US", "2.3")]
+    [Trait("Category", "Integration")]
+    public async Task When_two_tabs_of_the_same_customer_hold_10_seats_at_the_same_time_Then_only_one_succeeds()
+    {
+        // Arrange: 20 seats, one customer, two tabs released at the same instant
+        var (screening, _) = await ScreeningWithSeatsAsync(Enumerable.Range(1, 20).Select(number => ("A", number)).ToArray());
+        var customer = (await CustomersAsync(1))[0];
+        var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // Act
+        var tabs = Enumerable.Range(0, 2).Select(_ => Task.Run(async () =>
+        {
+            await using var db = _database.CreateDbContext();
+            await start.Task;
+            return await new ReservationRepository(db).TryHoldSeatsAsync(customer, screening, 10, Now);
+        })).ToList();
+        start.SetResult();
+        var results = await Task.WhenAll(tabs);
+
+        // Assert: counted under the lock, the second tab sees the 10 seats of the first one
+        results.Count(result => result.Hold != null).ShouldBe(1);
+        results.Count(result => result.Refusal == HoldRefusal.SeatLimitReached).ShouldBe(1);
     }
 }

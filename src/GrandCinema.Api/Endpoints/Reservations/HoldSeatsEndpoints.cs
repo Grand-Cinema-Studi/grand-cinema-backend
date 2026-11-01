@@ -21,7 +21,7 @@ public static class HoldSeatsEndpoints
             .WithName("HoldSeats")
             .WithTags("Reservations")
             .WithSummary("Hold seats for 10 minutes")
-            .WithDescription("Holds the given number of seats (1 to 10) of a screening for the signed-in customer while they pay. The seats are given by the cinema, row after row, and freed after 10 minutes without payment. 409 not-enough-seats when fewer seats are left, also for the second of two customers who want the last seat at the same time; 409 screening-started; 404 screening-not-found.")
+            .WithDescription("Holds the given number of seats (1 to 10) of a screening for the signed-in customer while they pay. A customer cannot have more than 10 seats, held or paid, for the same screening (409 seat-limit-reached). The seats are given by the cinema, row after row, and freed after 10 minutes without payment. 409 not-enough-seats when fewer seats are left, also for the second of two customers who want the last seat at the same time; 409 screening-started; 404 screening-not-found.")
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status404NotFound)
