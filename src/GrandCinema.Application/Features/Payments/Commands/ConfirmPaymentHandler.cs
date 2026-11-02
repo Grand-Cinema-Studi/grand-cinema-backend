@@ -18,6 +18,35 @@ public class ConfirmPaymentHandler : ICommandHandler<ConfirmPaymentCommand, Resu
         _timeProvider = timeProvider;
     }
 
-    public Task<Result<PaymentOutcome>> Handle(ConfirmPaymentCommand command, CancellationToken cancellationToken = default) =>
-        throw new NotImplementedException();
+    public async Task<Result<PaymentOutcome>> Handle(ConfirmPaymentCommand command, CancellationToken cancellationToken = default)
+    {
+        // The signature first: an unsigned notification says nothing that can be trusted
+        var notification = _paymentGateway.ReadNotification(command.Payload, command.Signature);
+        if (!notification.IsGenuine)
+        {
+            return PaymentErrors.NotificationNotGenuine;
+        }
+
+        // Stripe also sends other events (payment page opened, expired…): only a completed payment matters
+        if (notification.PaidReservationId is not { } reservationId || notification.PaymentReference is not { } paymentReference)
+        {
+            return PaymentOutcome.Ignored;
+        }
+
+        var confirmation = await _reservationRepository.ConfirmPaymentAsync(
+            reservationId, paymentReference, _timeProvider.GetUtcNow().UtcDateTime, cancellationToken);
+        if (confirmation == PaymentConfirmation.Confirmed)
+        {
+            return PaymentOutcome.Confirmed;
+        }
+
+        if (confirmation == PaymentConfirmation.AlreadyConfirmed)
+        {
+            return PaymentOutcome.AlreadyConfirmed;
+        }
+
+        // Paid after its seats were freed, or paid twice: no seat is sold for this money, it goes back
+        await _paymentGateway.RefundAsync(paymentReference, cancellationToken);
+        return PaymentOutcome.Refunded;
+    }
 }
