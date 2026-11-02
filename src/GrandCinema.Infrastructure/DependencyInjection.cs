@@ -1,5 +1,7 @@
+using GrandCinema.Application.Abstractions.Payments;
 using GrandCinema.Application.Abstractions.Persistence;
 using GrandCinema.Application.Abstractions.Security;
+using GrandCinema.Infrastructure.Payments;
 using GrandCinema.Infrastructure.Persistence;
 using GrandCinema.Infrastructure.Persistence.Repositories;
 using GrandCinema.Infrastructure.Security;
@@ -27,6 +29,10 @@ public static class DependencyInjection
         services.AddSingleton(_ => JwtOptions.FromConfiguration(configuration));
         services.AddSingleton<IAccessTokenGenerator, JwtAccessTokenGenerator>();
         services.AddSingleton<IPasswordHasher, AspNetCorePasswordHasher>();
+
+        // Read on first use, as JwtOptions: the API tests replace Stripe and never need its keys
+        services.AddSingleton(_ => StripeOptions.FromConfiguration(configuration));
+        services.AddSingleton<IPaymentGateway, StripePaymentGateway>();
 
         return services;
     }
