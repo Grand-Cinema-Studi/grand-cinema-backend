@@ -52,8 +52,29 @@ public class StripePaymentGateway : IPaymentGateway
         return session.Url;
     }
 
-    public PaymentNotification ReadNotification(string payload, string signature) =>
-        throw new NotImplementedException("Step 20h");
+    public PaymentNotification ReadNotification(string payload, string signature)
+    {
+        Event stripeEvent;
+        try
+        {
+            // Checks the signature and its age (5 minutes at most, against a notification replayed later).
+            // The version of the API used by Stripe for its notifications may differ from the one of the library: only the signature matters here.
+            stripeEvent = EventUtility.ConstructEvent(payload, signature, _options.WebhookSecret, throwOnApiVersionMismatch: false);
+        }
+        catch (StripeException)
+        {
+            return PaymentNotification.NotGenuine;
+        }
+
+        if (stripeEvent.Type != "checkout.session.completed"
+            || stripeEvent.Data.Object is not Session { PaymentStatus: "paid" } session
+            || !Guid.TryParse(session.ClientReferenceId, out var reservationId))
+        {
+            return PaymentNotification.Ignored;
+        }
+
+        return PaymentNotification.Paid(reservationId, session.PaymentIntentId ?? session.Id);
+    }
 
     public async Task RefundAsync(string paymentReference, CancellationToken cancellationToken = default)
     {
