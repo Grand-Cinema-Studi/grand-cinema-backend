@@ -119,9 +119,54 @@ public sealed class ReservationRepository : IReservationRepository
         return true;
     }
 
-    public Task RecordTermsOfSaleAsync(Guid reservationId, string version, DateTime nowUtc, CancellationToken cancellationToken = default) =>
-        throw new NotImplementedException();
+    public async Task RecordTermsOfSaleAsync(Guid reservationId, string version, DateTime nowUtc, CancellationToken cancellationToken = default)
+    {
+        await _db.Reservations
+            .Where(r => r.Id == reservationId)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(r => r.TermsOfSaleAcceptedAt, nowUtc)
+                .SetProperty(r => r.TermsOfSaleVersion, version), cancellationToken);
+    }
 
-    public Task<PaymentConfirmation> ConfirmPaymentAsync(Guid reservationId, string paymentReference, DateTime nowUtc, CancellationToken cancellationToken = default) =>
-        throw new NotImplementedException();
+    public async Task<PaymentConfirmation> ConfirmPaymentAsync(Guid reservationId, string paymentReference, DateTime nowUtc, CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+
+        var screeningId = await _db.Reservations
+            .Where(r => r.Id == reservationId)
+            .Select(r => (Guid?)r.ScreeningId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (screeningId is null)
+        {
+            return PaymentConfirmation.Rejected;
+        }
+
+        // The lock of the holds (bug 0001): a hold that releases the expired seats of this screening
+        // and this confirmation run one after the other, never at the same time
+        await _db.Database.ExecuteSqlAsync(
+            $"""SELECT 1 FROM "Screenings" WHERE "Id" = {screeningId.Value} FOR UPDATE""", cancellationToken);
+
+        // Still waiting for payment, so its seats are still attached to it, even after the 10 minutes
+        // as long as no hold has released them: it is sold
+        var confirmed = await _db.Reservations
+            .Where(r => r.Id == reservationId && r.Status == ReservationStatus.PendingPayment)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(r => r.Status, ReservationStatus.Confirmed)
+                .SetProperty(r => r.PaidAt, nowUtc)
+                .SetProperty(r => r.PaymentReference, paymentReference), cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        if (confirmed == 1)
+        {
+            return PaymentConfirmation.Confirmed;
+        }
+
+        // Stripe sends a notification again when it is not sure it was received: the same payment changes nothing
+        var reservation = await _db.Reservations
+            .Where(r => r.Id == reservationId)
+            .Select(r => new { r.Status, r.PaymentReference })
+            .SingleAsync(cancellationToken);
+        return reservation.Status == ReservationStatus.Confirmed && reservation.PaymentReference == paymentReference
+            ? PaymentConfirmation.AlreadyConfirmed
+            : PaymentConfirmation.Rejected;
+    }
 }
