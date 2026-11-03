@@ -60,7 +60,7 @@ Les user stories, leurs critères d'acceptation, la Definition of Ready et la De
 
 | Méthode | Route | Rôle |
 |---|---|---|
-| `GET` | `/api/schedule?date=AAAA-MM-JJ` | Films et séances d'un jour (aujourd'hui si la date est omise), films triés par titre, séances triées par heure, avec les places restantes de chaque séance (vendues et paiements en cours déduits) |
+| `GET` | `/api/schedule?date=AAAA-MM-JJ` | Films et séances d'un jour (aujourd'hui si la date est omise), séances pas encore commencées seulement, films triés par titre, séances triées par heure, avec les places restantes de chaque séance (vendues et paiements en cours déduits) |
 | `GET` | `/api/movies` | Films à l'affiche (au moins une séance à venir), triés par titre |
 | `GET` | `/api/movies/{id}` | Un film et toutes ses séances à venir (sans limite de date), regroupées par jour, avec les places restantes ; `404` si le film n'existe pas |
 | `POST` | `/api/users` | Création d'un compte spectateur ; `acceptPrivacyPolicy: true` obligatoire (date et version de la politique enregistrées) ; renvoie un jeton d'accès (`201`) |
