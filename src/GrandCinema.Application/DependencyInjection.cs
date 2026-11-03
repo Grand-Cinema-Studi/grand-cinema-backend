@@ -5,6 +5,7 @@ using GrandCinema.Application.Features.Auth.DTOs;
 using GrandCinema.Application.Features.Auth.Queries;
 using GrandCinema.Application.Features.Movies.DTOs;
 using GrandCinema.Application.Features.Movies.Queries;
+using GrandCinema.Application.Features.Payments.Commands;
 using GrandCinema.Application.Features.Reservations.Commands;
 using GrandCinema.Application.Features.Reservations.DTOs;
 using GrandCinema.Application.Features.Reservations.Queries;
@@ -29,6 +30,8 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<HoldSeatsCommand, Result<ReservationDto>>, HoldSeatsHandler>();
         services.AddScoped<IQueryHandler<GetReservationQuery, Result<ReservationDto>>, GetReservationHandler>();
         services.AddScoped<ICommandHandler<CancelHoldCommand, Result<Guid>>, CancelHoldHandler>();
+        services.AddScoped<ICommandHandler<StartPaymentCommand, Result<PaymentPageDto>>, StartPaymentHandler>();
+        services.AddScoped<ICommandHandler<ConfirmPaymentCommand, Result<PaymentOutcome>>, ConfirmPaymentHandler>();
 
         return services;
     }

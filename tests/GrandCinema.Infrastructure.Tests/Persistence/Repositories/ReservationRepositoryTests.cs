@@ -259,4 +259,90 @@ public class ReservationRepositoryTests : IClassFixture<PostgreSqlFixture>
         results.Count(result => result.Hold != null).ShouldBe(1);
         results.Count(result => result.Refusal == HoldRefusal.SeatLimitReached).ShouldBe(1);
     }
+
+    [Fact]
+    [Trait("US", "3.1")]
+    [Trait("Category", "Integration")]
+    public async Task When_a_held_reservation_is_paid_Then_it_is_confirmed_and_keeps_its_seats()
+    {
+        // Arrange: a hold of 2 seats, still valid
+        var (screening, seats) = await ScreeningWithSeatsAsync(("A", 1), ("A", 2));
+        var hold = await ReservationAsync(screening, ReservationStatus.PendingPayment, Now.AddMinutes(5), seats["A1"], seats["A2"]);
+        await using var db = _database.CreateDbContext();
+
+        // Act
+        var confirmation = await new ReservationRepository(db).ConfirmPaymentAsync(hold, "pi_paid", Now);
+
+        // Assert: sold, with the trace of the payment, and its seats stay taken
+        confirmation.ShouldBe(PaymentConfirmation.Confirmed);
+        await using var readDb = _database.CreateDbContext();
+        var paid = await readDb.Reservations.Include(r => r.ReservedSeats).SingleAsync(r => r.Id == hold);
+        paid.Status.ShouldBe(ReservationStatus.Confirmed);
+        paid.PaidAt.ShouldBe(Now);
+        paid.PaymentReference.ShouldBe("pi_paid");
+        paid.ReservedSeats.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    [Trait("US", "3.1")]
+    [Trait("Category", "Integration")]
+    public async Task When_the_seats_were_freed_before_the_payment_Then_it_is_rejected_and_nothing_changes()
+    {
+        // Arrange: the hold expired, and a later hold released its seat
+        var (screening, _) = await ScreeningWithSeatsAsync(("A", 1));
+        var freed = await ReservationAsync(screening, ReservationStatus.Expired, Now.AddMinutes(-15));
+        await using var db = _database.CreateDbContext();
+
+        // Act
+        var confirmation = await new ReservationRepository(db).ConfirmPaymentAsync(freed, "pi_late", Now);
+
+        // Assert: the handler refunds it
+        confirmation.ShouldBe(PaymentConfirmation.Rejected);
+        await using var readDb = _database.CreateDbContext();
+        var kept = await readDb.Reservations.SingleAsync(r => r.Id == freed);
+        kept.Status.ShouldBe(ReservationStatus.Expired);
+        kept.PaymentReference.ShouldBeNull();
+    }
+
+    [Fact]
+    [Trait("US", "3.1")]
+    [Trait("Category", "Integration")]
+    public async Task When_stripe_notifies_the_same_payment_twice_Then_it_is_confirmed_once_and_a_second_payment_is_rejected()
+    {
+        // Arrange
+        var (screening, seats) = await ScreeningWithSeatsAsync(("A", 1));
+        var hold = await ReservationAsync(screening, ReservationStatus.PendingPayment, Now.AddMinutes(5), seats["A1"]);
+        await using var db = _database.CreateDbContext();
+        var repository = new ReservationRepository(db);
+
+        // Act: the notification sent again by Stripe, then a second payment from another tab
+        var first = await repository.ConfirmPaymentAsync(hold, "pi_first", Now);
+        var again = await repository.ConfirmPaymentAsync(hold, "pi_first", Now.AddSeconds(30));
+        var secondPayment = await repository.ConfirmPaymentAsync(hold, "pi_second", Now.AddMinutes(1));
+
+        // Assert
+        first.ShouldBe(PaymentConfirmation.Confirmed);
+        again.ShouldBe(PaymentConfirmation.AlreadyConfirmed);
+        secondPayment.ShouldBe(PaymentConfirmation.Rejected);
+    }
+
+    [Fact]
+    [Trait("US", "3.1")]
+    [Trait("Category", "Integration")]
+    public async Task When_the_terms_of_sale_are_accepted_Then_their_version_and_instant_are_recorded()
+    {
+        // Arrange
+        var (screening, seats) = await ScreeningWithSeatsAsync(("A", 1));
+        var hold = await ReservationAsync(screening, ReservationStatus.PendingPayment, Now.AddMinutes(5), seats["A1"]);
+        await using var db = _database.CreateDbContext();
+
+        // Act
+        await new ReservationRepository(db).RecordTermsOfSaleAsync(hold, "2026-11-02", Now);
+
+        // Assert: the proof of criterion 4
+        await using var readDb = _database.CreateDbContext();
+        var accepted = await readDb.Reservations.SingleAsync(r => r.Id == hold);
+        accepted.TermsOfSaleVersion.ShouldBe("2026-11-02");
+        accepted.TermsOfSaleAcceptedAt.ShouldBe(Now);
+    }
 }

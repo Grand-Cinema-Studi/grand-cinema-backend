@@ -70,11 +70,25 @@ namespace GrandCinema.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("PaidAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PaymentReference")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
                     b.Property<Guid>("ScreeningId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("Status")
                         .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("TermsOfSaleAcceptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TermsOfSaleVersion")
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 

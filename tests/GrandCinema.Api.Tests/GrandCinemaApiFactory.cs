@@ -1,10 +1,13 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using GrandCinema.Application.Abstractions.Payments;
 using GrandCinema.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Testcontainers.PostgreSql;
 
 namespace GrandCinema.Api.Tests;
@@ -26,6 +29,8 @@ public sealed class GrandCinemaApiFactory : WebApplicationFactory<Program>, IAsy
         builder.UseSetting("Jwt:SigningKey", "signing-key-of-the-api-tests-only-0123456789");
         // As on the acceptance environment, where the trainers use Swagger.
         builder.UseSetting("Swagger:Enabled", "true");
+        // Stripe is replaced: the API tests need neither the network nor a Stripe account (last registration wins)
+        builder.ConfigureTestServices(services => services.AddSingleton<IPaymentGateway, FakePaymentGateway>());
     }
 
     public GrandCinemaDbContext CreateDbContext() =>
