@@ -3,6 +3,7 @@ using System.Text;
 using GrandCinema.Application.Abstractions.Payments;
 using GrandCinema.Infrastructure.Payments;
 using Shouldly;
+using Stripe;
 
 namespace GrandCinema.Infrastructure.Tests.Payments;
 
@@ -13,6 +14,7 @@ public class StripePaymentGatewayTests
 
     private readonly StripePaymentGateway _gateway = new(
         new StripeOptions { SecretKey = "sk_test_not_used", WebhookSecret = WebhookSecret, FrontBaseUrl = "https://front.example" },
+        new StripeClient("sk_test_not_used"),
         TimeProvider.System);
 
     // The notification of a paid payment page, reduced to the fields that the gateway reads

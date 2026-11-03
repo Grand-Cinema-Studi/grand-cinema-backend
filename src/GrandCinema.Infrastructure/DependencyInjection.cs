@@ -8,6 +8,7 @@ using GrandCinema.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Stripe;
 
 namespace GrandCinema.Infrastructure;
 
@@ -32,6 +33,8 @@ public static class DependencyInjection
 
         // Read on first use, as JwtOptions: the API tests replace Stripe and never need its keys
         services.AddSingleton(_ => StripeOptions.FromConfiguration(configuration));
+        // One client for the whole application, built from the test key on first use
+        services.AddSingleton<IStripeClient>(provider => new StripeClient(provider.GetRequiredService<StripeOptions>().SecretKey));
         services.AddSingleton<IPaymentGateway, StripePaymentGateway>();
 
         return services;

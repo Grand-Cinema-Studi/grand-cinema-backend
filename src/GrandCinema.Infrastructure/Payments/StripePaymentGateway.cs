@@ -13,10 +13,10 @@ public class StripePaymentGateway : IPaymentGateway
     private readonly IStripeClient _client;
     private readonly TimeProvider _timeProvider;
 
-    public StripePaymentGateway(StripeOptions options, TimeProvider timeProvider)
+    public StripePaymentGateway(StripeOptions options, IStripeClient client, TimeProvider timeProvider)
     {
         _options = options;
-        _client = new StripeClient(options.SecretKey);
+        _client = client;
         _timeProvider = timeProvider;
     }
 
