@@ -64,7 +64,7 @@ jobs:
             --instance-ids "$INSTANCE_ID" \
             --document-name AWS-RunShellScript \
             --comment "Deploy $GITHUB_SHA" \
-            --parameters "{\"commands\":[\"curl --proto '=https' --tlsv1.2 -fsSL $SCRIPT_URL -o /tmp/deploy.sh\",\"bash /tmp/deploy.sh $GITHUB_SHA\"]}" \
+            --parameters "{\"commands\":[\"curl --proto '=https' --tlsv1.2 -fsSL $SCRIPT_URL -o /tmp/deploy-$GITHUB_SHA.sh && bash /tmp/deploy-$GITHUB_SHA.sh $GITHUB_SHA\"]}" \
             --query Command.CommandId --output text)
 
           # Wait up to 10 minutes: pulling the images for the first time can be long
