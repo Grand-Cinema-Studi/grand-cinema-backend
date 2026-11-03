@@ -20,6 +20,17 @@ public class GetScheduleHandlerTests
             .ReturnsAsync(new Dictionary<Guid, int>());
     }
 
+    private static Movie MovieTitled(string title) => new()
+    {
+        Id = Guid.NewGuid(),
+        Title = title,
+        Synopsis = "Synopsis",
+        DurationMinutes = 119,
+        Genre = "War",
+        ReleaseDate = new DateOnly(2020, 1, 15),
+        PosterUrl = "https://example.com/poster.jpg"
+    };
+
     [Fact]
     [Trait("US", "1.1")]
     public async Task When_screenings_exist_Then_they_are_grouped_by_movie()
@@ -234,5 +245,59 @@ public class GetScheduleHandlerTests
 
         // Assert
         result.Movies.ShouldHaveSingleItem().Screenings.ShouldHaveSingleItem().RemainingSeats.ShouldBe(70);
+    }
+
+    [Fact]
+    [Trait("US", "1.1")]
+    public async Task When_screenings_have_already_started_Then_they_are_not_listed_nor_their_movie_if_it_has_no_other()
+    {
+        // Arrange: it is 10:00; "1917" only had a 09:30 screening, "Blue Note" starts at 10:00 and at 18:30
+        var day = new DateOnly(2026, 7, 18);
+        var room = new Room { Id = Guid.NewGuid(), Name = "Salle 1", Capacity = 170 };
+        var blueNote = MovieTitled("Blue Note");
+        var evening = day.ToDateTime(new TimeOnly(18, 30));
+        _screenings
+            .Setup(r => r.GetScreeningsAsync(day, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Screening>
+            {
+                new() { Id = Guid.NewGuid(), Room = room, Movie = MovieTitled("1917"), StartsAt = day.ToDateTime(new TimeOnly(9, 30)), Price = 9m },
+                new() { Id = Guid.NewGuid(), Room = room, Movie = blueNote, StartsAt = day.ToDateTime(new TimeOnly(10, 0)), Price = 9m },
+                new() { Id = Guid.NewGuid(), Room = room, Movie = blueNote, StartsAt = evening, Price = 9m }
+            });
+        var handler = new GetScheduleHandler(_screenings.Object, _time);
+
+        // Act
+        var result = await handler.Handle(new GetScheduleQuery(day));
+
+        // Assert: a screening that starts now can no longer be held (HoldSeatsHandler), so it is not offered either
+        var movieSchedule = result.Movies.ShouldHaveSingleItem();
+        movieSchedule.Title.ShouldBe("Blue Note");
+        movieSchedule.Screenings.ShouldHaveSingleItem().StartsAt.ShouldBe(evening);
+    }
+
+    [Fact]
+    [Trait("US", "1.1")]
+    public async Task When_the_cinema_is_in_Paris_Then_a_screening_has_started_according_to_the_local_time()
+    {
+        // Arrange: 10:00 UTC is 12:00 in Paris in July; the 11:00 screening has started, the 13:00 one has not
+        _time.SetLocalTimeZone(TimeZoneInfo.FindSystemTimeZoneById("Europe/Paris"));
+        var day = new DateOnly(2026, 7, 18);
+        var room = new Room { Id = Guid.NewGuid(), Name = "Salle 1", Capacity = 170 };
+        var movie = MovieTitled("1917");
+        var afternoon = day.ToDateTime(new TimeOnly(13, 0));
+        _screenings
+            .Setup(r => r.GetScreeningsAsync(day, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Screening>
+            {
+                new() { Id = Guid.NewGuid(), Room = room, Movie = movie, StartsAt = day.ToDateTime(new TimeOnly(11, 0)), Price = 9m },
+                new() { Id = Guid.NewGuid(), Room = room, Movie = movie, StartsAt = afternoon, Price = 9m }
+            });
+        var handler = new GetScheduleHandler(_screenings.Object, _time);
+
+        // Act
+        var result = await handler.Handle(new GetScheduleQuery(day));
+
+        // Assert: the screenings are stored in the local time of the cinema, so they are compared with it, not with UTC
+        result.Movies.ShouldHaveSingleItem().Screenings.ShouldHaveSingleItem().StartsAt.ShouldBe(afternoon);
     }
 }
