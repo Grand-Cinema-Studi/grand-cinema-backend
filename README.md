@@ -20,6 +20,7 @@ Projet réalisé dans le cadre du Bachelor Développeur d'Application (Studi), B
 | Base de données | PostgreSQL 16 (Docker en local), EF Core 10 et migrations |
 | Authentification | Jeton JWT (`Authorization: Bearer`), mots de passe hachés par PBKDF2 (`PasswordHasher` d'ASP.NET Core), voir l'[ADR 0002](https://github.com/Grand-Cinema-Studi/grand-cinema-docs/blob/main/adr/0002-authentication-jwt.md) |
 | Documentation de l'API | OpenAPI (généré par ASP.NET Core) et Swagger UI |
+| Paiement | Stripe Checkout en mode test (`Stripe.net`) : la carte est saisie sur la page de Stripe, jamais sur la nôtre ; la réservation n'est confirmée que par la notification signée de Stripe (webhook) |
 | Tests | xUnit, Moq, Shouldly, `FakeTimeProvider`, Testcontainers (PostgreSQL), Coverlet |
 
 ## Architecture
@@ -45,10 +46,11 @@ La couche Application est rangée par fonctionnalité (`Features/<Fonctionnalit�
 
 | User story | Contenu | État |
 |---|---|---|
-| US 1.1 | Consulter les films et les horaires | Fait côté API : `GET /api/schedule`, `GET /api/movies`, `GET /api/movies/{id}` (fiche d'un film avec toutes ses séances à venir, réservables jusqu'à un an à l'avance) ; fiche du film à faire dans le front |
+| US 1.1 | Consulter les films et les horaires | Fait côté API : `GET /api/schedule`, `GET /api/movies`, `GET /api/movies/{id}` (fiche d'un film avec toutes ses séances à venir, réservables jusqu'à un an à l'avance) ; écrans dans le front |
 | US 2.1 | Créer un compte et se connecter | Fait (API et front) : `POST /api/users` (avec l'acceptation de la politique de confidentialité), `POST /api/tokens`, `GET /api/users/me`, `DELETE /api/users/me` |
-| US 2.2 | Voir les places restantes en temps réel | Fait côté API : `remainingSeats` sur chaque séance de `GET /api/schedule` ; affichage dans le front |
-| US 2.3 | Réserver un nombre de places et passer au paiement | Fait côté API : `POST /api/reservations` (blocage de 10 minutes, sans double vente, au plus 10 places par compte et par séance), `GET /api/reservations/{id}`, `DELETE /api/reservations/{id}` (annulation avant paiement, places remises en vente aussitôt) ; écran dans le front ; paiement avec l'US 3.1 |
+| US 2.2 | Voir les places restantes en temps réel | Fait (API et front) : `remainingSeats` sur chaque séance de `GET /api/schedule` et de `GET /api/movies/{id}` |
+| US 2.3 | Réserver un nombre de places et passer au paiement | Fait (API et front) : `POST /api/reservations` (blocage de 10 minutes, sans double vente, au plus 10 places par compte et par séance), `GET /api/reservations/{id}`, `DELETE /api/reservations/{id}` (annulation avant paiement, places remises en vente aussitôt) ; paiement avec l'US 3.1 |
+| US 3.1 | Payer en ligne (Stripe, mode test) | Fait côté API : `POST /api/reservations/{id}/payment` (conditions générales de vente acceptées, page de paiement Stripe), `POST /api/payments/stripe-webhook` (confirmation par notification signée, remboursement d'un paiement arrivé après la libération des places) ; écran dans le front |
 | US 5.2 | Gérer la programmation | À faire |
 | US 5.3 | Suivre les réservations | À faire |
 
@@ -68,10 +70,12 @@ Les user stories, leurs critères d'acceptation, la Definition of Ready et la De
 | `POST` | `/api/reservations` | Blocage de 1 à 10 places d'une séance pendant 10 minutes, pour l'utilisateur connecté (au plus 10 par compte et par séance, bloquées ou payées) ; places attribuées par le cinéma ; `409` s'il n'en reste pas assez (y compris pour le second de deux clients sur la dernière place), si la séance a commencé, ou si le compte dépasserait 10 places sur la séance |
 | `DELETE` | `/api/reservations/{id}` | Annulation d'un blocage par son propriétaire, avant paiement (`204`) : places remises en vente aussitôt ; `404` pour celui d'un autre, `409` pour une réservation payée |
 | `GET` | `/api/reservations/{id}` | Un blocage ou une réservation de l'utilisateur connecté, avec son film, ses places et son statut (`PendingPayment`, `Expired`, `Cancelled`, `Confirmed`) ; `404` pour celle d'un autre |
+| `POST` | `/api/reservations/{id}/payment` | Page de paiement Stripe d'un blocage de l'utilisateur connecté (`200`, `checkoutUrl`) ; `acceptTermsOfSale: true` obligatoire (sinon `400`), date et version des conditions générales de vente enregistrées ; `409 hold-expired` après les 10 minutes ou une annulation, `409 reservation-paid` si elle est déjà payée |
+| `POST` | `/api/payments/stripe-webhook` | Notification de Stripe, sans jeton : signature (`Stripe-Signature`) vérifiée avant tout, `400` sinon ; un paiement abouti confirme la réservation une seule fois ; un paiement arrivé après la libération des places, ou un second paiement, est remboursé |
 | `GET` | `/health` | État de l'application (`Healthy`) |
 | `GET` | `/` | Nom de l'API |
 
-Tout endpoint est réservé aux utilisateurs connectés, sauf ceux déclarés publics (programmation, films à l'affiche, fiche d'un film, inscription, connexion, `/health`). Une route inconnue répond donc `401` à un visiteur sans jeton, et non `404`. Dans Swagger, le bouton **Authorize** reçoit le jeton renvoyé par `POST /api/tokens`.
+Tout endpoint est réservé aux utilisateurs connectés, sauf ceux déclarés publics (programmation, films à l'affiche, fiche d'un film, inscription, connexion, notification de Stripe, protégée par sa signature, `/health`). Une route inconnue répond donc `401` à un visiteur sans jeton, et non `404`. Dans Swagger, le bouton **Authorize** reçoit le jeton renvoyé par `POST /api/tokens`.
 
 En développement, la documentation interactive est sur `/swagger` et le document OpenAPI sur `/openapi/v1.json`. Swagger est désactivé par défaut et s'active par configuration (`Swagger:Enabled`, ou la variable d'environnement `Swagger__Enabled=true`).
 
@@ -120,6 +124,13 @@ Clé de signature des jetons JWT (32 octets au moins), également hors du dépô
 dotnet user-secrets set "Jwt:SigningKey" "$(openssl rand -base64 48)" --project src/GrandCinema.Api
 ```
 
+Clés Stripe de **test** (US 3.1), hors du dépôt : la clé secrète `sk_test_…` du tableau de bord Stripe (mode test, Developers → API keys), et le secret des notifications `whsec_…`, affiché par la [Stripe CLI](https://docs.stripe.com/stripe-cli) (`stripe login`, puis la commande `stripe listen` de l'étape 5). L'adresse du front local (`Stripe:FrontBaseUrl`) est dans `appsettings.Development.json`.
+
+```bash
+dotnet user-secrets set "Stripe:SecretKey" "<sk_test_…>" --project src/GrandCinema.Api
+dotnet user-secrets set "Stripe:WebhookSecret" "<whsec_…>" --project src/GrandCinema.Api
+```
+
 ### 4. Créer les tables et charger les données de démonstration
 
 ```bash
@@ -141,6 +152,14 @@ dotnet run --project src/GrandCinema.Api
 - Programmation du jour : http://localhost:5073/api/schedule
 - Fiche d'un film (Bird, avec sa séance dans un an) : http://localhost:5073/api/movies/22222222-2222-2222-2222-000000000005
 
+Pour payer en local, dans un autre terminal, la Stripe CLI relaie à l'API les notifications que Stripe ne peut pas envoyer à `localhost` :
+
+```bash
+stripe listen --events checkout.session.completed --forward-to http://localhost:5073/api/payments/stripe-webhook
+```
+
+Cartes de test : `4242 4242 4242 4242` (paiement accepté), `4000 0000 0000 0002` (carte refusée), avec une date future et un code quelconque. Aucun paiement réel n'est possible avec des clés de test.
+
 ## Tests
 
 ```bash
@@ -159,7 +178,7 @@ dotnet test --collect:"XPlat Code Coverage"       # avec mesure de couverture (C
 - Script SQL de création, généré depuis les migrations : [docs/database/schema.sql](docs/database/schema.sql)
 - Données de démonstration : [docs/database/seed-dev.sql](docs/database/seed-dev.sql)
 
-La double vente d'une place est empêchée de deux façons : le blocage se fait dans une transaction qui verrouille la séance (`SELECT … FOR UPDATE`), et une contrainte d'unicité sur `(ScreeningId, SeatId)` dans `ReservedSeats` refuse en base toute seconde vente.
+La double vente d'une place est empêchée de deux façons : le blocage se fait dans une transaction qui verrouille la séance (`SELECT … FOR UPDATE`), et une contrainte d'unicité sur `(ScreeningId, SeatId)` dans `ReservedSeats` refuse en base toute seconde vente. La confirmation d'un paiement prend le même verrou : elle ne peut pas croiser la libération des places d'un blocage expiré.
 
 ## Branches et contributions
 

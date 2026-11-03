@@ -29,6 +29,9 @@ services:
     environment:
       ConnectionStrings__Default: Host=db;Port=5432;Database=grandcinemadb;Username=sly;Password=${POSTGRES_PASSWORD}
       Jwt__SigningKey: ${JWT_SIGNING_KEY:?}
+      Stripe__SecretKey: ${STRIPE_SECRET_KEY:?}
+      Stripe__WebhookSecret: ${STRIPE_WEBHOOK_SECRET:?}
+      Stripe__FrontBaseUrl: ${FRONT_BASE_URL:?}
       Swagger__Enabled: ${SWAGGER_ENABLED:-false}
       TZ: Europe/Paris
     ports:

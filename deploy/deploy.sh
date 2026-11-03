@@ -23,6 +23,9 @@ cat > .env <<EOF
 POSTGRES_PASSWORD=$(parameter postgres-password)
 SWAGGER_ENABLED=$(parameter swagger-enabled)
 JWT_SIGNING_KEY=$(parameter jwt-signing-key)
+STRIPE_SECRET_KEY=$(parameter stripe-secret-key)
+STRIPE_WEBHOOK_SECRET=$(parameter stripe-webhook-secret)
+FRONT_BASE_URL=$(parameter front-base-url)
 API_IMAGE=ghcr.io/grand-cinema-studi/grand-cinema-backend:$COMMIT
 EOF
 
