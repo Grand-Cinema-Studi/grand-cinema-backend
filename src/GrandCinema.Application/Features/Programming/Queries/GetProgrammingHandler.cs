@@ -8,13 +8,13 @@ public sealed class GetProgrammingHandler : IQueryHandler<GetProgrammingQuery, P
 {
 
     private readonly IProgrammingRepository _programmingRepository;
-    private readonly IMovieReadRepository _movieReadRepository;
+    private readonly IScreeningReadRepository _screeningReadRepository;
     private readonly TimeProvider _timeProvider;
 
-    public GetProgrammingHandler(IProgrammingRepository programmingRepository, IMovieReadRepository movieReadRepository, TimeProvider timeProvider)
+    public GetProgrammingHandler(IProgrammingRepository programmingRepository, IScreeningReadRepository screeningReadRepository, TimeProvider timeProvider)
     {
         _programmingRepository = programmingRepository;
-        _movieReadRepository = movieReadRepository;
+        _screeningReadRepository = screeningReadRepository;
         _timeProvider = timeProvider;
     }
 

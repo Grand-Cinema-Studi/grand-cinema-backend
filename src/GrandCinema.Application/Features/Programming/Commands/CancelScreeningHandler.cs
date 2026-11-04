@@ -8,16 +8,40 @@ namespace GrandCinema.Application.Features.Programming.Commands;
 public sealed class CancelScreeningHandler : ICommandHandler<CancelScreeningCommand, Result<Guid>>
 {
     private readonly IProgrammingRepository _programmingRepository;
-    private readonly IMovieReadRepository _movieReadRepository;
+    private readonly IScreeningReadRepository _screeningReadRepository;
     private readonly TimeProvider _timeProvider;
 
-    public CancelScreeningHandler(IProgrammingRepository programmingRepository, IMovieReadRepository movieReadRepository, TimeProvider timeProvider)
+    public CancelScreeningHandler(IProgrammingRepository programmingRepository, IScreeningReadRepository screeningReadRepository, TimeProvider timeProvider)
     {
         _programmingRepository = programmingRepository;
-        _movieReadRepository = movieReadRepository;
+        _screeningReadRepository = screeningReadRepository;
         _timeProvider = timeProvider;
     }
 
-    public Task<Result<Guid>> Handle(CancelScreeningCommand command, CancellationToken cancellationToken = default) =>
-        throw new NotImplementedException();
+    public async Task<Result<Guid>> Handle(CancelScreeningCommand command, CancellationToken cancellationToken = default)
+    {
+        var screening = await _programmingRepository.GetScreeningAsync(command.ScreeningId, cancellationToken);
+        if (screening is null)
+        {
+            return ProgrammingErrors.ScreeningNotFound;
+        }
+        if (screening.StartsAt <= _timeProvider.GetLocalNow().DateTime)
+        {
+            return ProgrammingErrors.ScreeningStarted;
+        }
+        if (!command.Confirmed && await HasTakenSeatsAsync(screening.Id, cancellationToken))
+        {
+            return ProgrammingErrors.ScreeningHasReservations;
+        }
+
+        await _programmingRepository.CancelScreeningAsync(screening.Id, _timeProvider.GetUtcNow().UtcDateTime, cancellationToken);
+        return screening.Id;
+    }
+
+    // Seats held (not expired) or sold, counted as the remaining seats of the schedule
+    private async Task<bool> HasTakenSeatsAsync(Guid screeningId, CancellationToken cancellationToken)
+    {
+        var takenSeats = await _screeningReadRepository.CountTakenSeatsAsync([screeningId], _timeProvider.GetUtcNow().UtcDateTime, cancellationToken);
+        return takenSeats.GetValueOrDefault(screeningId) > 0;
+    }
 }
