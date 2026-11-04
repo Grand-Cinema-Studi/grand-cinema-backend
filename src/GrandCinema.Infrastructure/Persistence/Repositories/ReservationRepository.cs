@@ -91,6 +91,8 @@ public sealed class ReservationRepository : IReservationRepository
     {
         return await _db.Reservations
             .AsNoTracking()
+            // A reservation stays readable by its owner after its screening was cancelled (US 5.2)
+            .IgnoreQueryFilters()
             .Include(r => r.Screening)
             .Include(r => r.ReservedSeats)
             .ThenInclude(reserved => reserved.Seat)
