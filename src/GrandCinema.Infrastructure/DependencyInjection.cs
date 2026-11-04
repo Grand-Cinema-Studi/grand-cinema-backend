@@ -37,6 +37,8 @@ public static class DependencyInjection
         services.AddSingleton<IStripeClient>(provider => new StripeClient(provider.GetRequiredService<StripeOptions>().SecretKey));
         services.AddSingleton<IPaymentGateway, StripePaymentGateway>();
 
+        services.AddScoped<IProgrammingRepository, ProgrammingRepository>();
+
         return services;
     }
 }
