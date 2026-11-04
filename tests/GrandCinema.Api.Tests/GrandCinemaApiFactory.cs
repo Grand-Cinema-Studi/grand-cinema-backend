@@ -1,7 +1,11 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using GrandCinema.Application.Abstractions.Payments;
+using GrandCinema.Application.Abstractions.Security;
+using GrandCinema.Domain.Entities;
+using GrandCinema.Domain.Enums;
 using GrandCinema.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -55,6 +59,32 @@ public sealed class GrandCinemaApiFactory : WebApplicationFactory<Program>, IAsy
         response.EnsureSuccessStatusCode();
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         return body.GetProperty("accessToken").GetString()!;
+    }
+
+    // An account of any role, inserted directly (public sign-up only creates customers),
+    // with the token the API itself signs at sign-in
+    public async Task<HttpClient> CreateClientWithRoleAsync(UserRole role)
+    {
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = NewEmail(),
+            PasswordHash = "not-used-by-the-tests",
+            FirstName = "Claire",
+            LastName = "Durand",
+            CreatedAt = DateTime.UtcNow,
+            Role = role
+        };
+        await using (var db = CreateDbContext())
+        {
+            db.Users.Add(user);
+            await db.SaveChangesAsync();
+        }
+
+        var token = Services.GetRequiredService<IAccessTokenGenerator>().Generate(user);
+        var client = CreateVisitorClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Value);
+        return client;
     }
 
     public async Task InitializeAsync()
