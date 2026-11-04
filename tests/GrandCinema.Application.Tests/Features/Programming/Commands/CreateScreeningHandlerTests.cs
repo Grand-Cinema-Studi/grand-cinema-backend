@@ -120,4 +120,16 @@ public class CreateScreeningHandlerTests
         result.Error.ShouldBe(ProgrammingErrors.RoomNotAvailable);
         NothingWasAdded();
     }
+
+    [Fact]
+    [Trait("US", "5.2")]
+    public async Task When_the_time_has_a_time_zone_Then_starts_at_is_refused_and_nothing_is_added()
+    {
+        // Act: 20:30 UTC is later than 10:00, but it is an instant, not a time of the cinema
+        var result = await CreateHandler().Handle(new CreateScreeningCommand(_bird.Id, _room.Id, new DateTime(2026, 7, 18, 20, 30, 0, DateTimeKind.Utc), 9.5m));
+
+        // Assert
+        result.Error.ShouldNotBeNull().ValidationErrors.ShouldNotBeNull().Keys.ShouldBe(new[] { "startsAt" });
+        NothingWasAdded();
+    }
 }

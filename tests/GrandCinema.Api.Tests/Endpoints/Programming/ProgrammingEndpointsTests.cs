@@ -194,4 +194,23 @@ public class ProgrammingEndpointsTests
         programming.GetProperty("rooms").EnumerateArray().ShouldContain(room =>
             room.GetProperty("roomId").GetString() == roomId.ToString() && room.GetProperty("capacity").GetInt32() == 2);
     }
+
+    [Fact]
+    [Trait("US", "5.2")]
+    [Trait("Category", "Integration")]
+    public async Task When_the_time_is_sent_with_a_time_zone_Then_400_on_starts_at_instead_of_500()
+    {
+        // Arrange
+        var (movieId, roomId) = await MovieAndRoomAsync();
+        using var manager = await _api.CreateClientWithRoleAsync(UserRole.Manager);
+
+        // Act: what Swagger proposes by default, an instant in UTC ("Z"), not a time of the cinema
+        var response = await manager.PostAsJsonAsync("/api/programming/screenings", new { movieId, roomId, startsAt = "2032-03-16T20:30:00Z", price = 9.5m });
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        problem.GetProperty("errors").TryGetProperty("startsAt", out _).ShouldBeTrue();
+        (await PublicScreeningsAsync("2032-03-16")).ShouldBeEmpty();
+    }
 }
