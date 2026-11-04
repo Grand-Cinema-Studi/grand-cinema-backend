@@ -21,6 +21,7 @@ public class Screening
     /// True when a screening of durationMinutes starting at startsAt would need the room while this one does:
     /// from its start to the end of its movie, cleaning included. Needs Movie.
     /// </summary>
-    public static bool OverlapsWith(DateTime startsAt, int durationMinutes) =>
-        throw new NotImplementedException();
+    public bool OverlapsWith(DateTime startsAt, int durationMinutes) =>
+        startsAt < StartsAt + TimeSpan.FromMinutes(Movie.DurationMinutes) + CleaningTime
+        && StartsAt < startsAt + TimeSpan.FromMinutes(durationMinutes) + CleaningTime;
 }
