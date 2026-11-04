@@ -29,19 +29,12 @@ public sealed class CancelScreeningHandler : ICommandHandler<CancelScreeningComm
         {
             return ProgrammingErrors.ScreeningStarted;
         }
-        if (!command.Confirmed && await HasTakenSeatsAsync(screening.Id, cancellationToken))
+        if (!command.Confirmed && await _screeningReadRepository.HasTakenSeatsAsync(screening.Id, _timeProvider.GetUtcNow().UtcDateTime, cancellationToken))
         {
             return ProgrammingErrors.ScreeningHasReservations;
         }
 
         await _programmingRepository.CancelScreeningAsync(screening.Id, _timeProvider.GetUtcNow().UtcDateTime, cancellationToken);
         return screening.Id;
-    }
-
-    // Seats held (not expired) or sold, counted as the remaining seats of the schedule
-    private async Task<bool> HasTakenSeatsAsync(Guid screeningId, CancellationToken cancellationToken)
-    {
-        var takenSeats = await _screeningReadRepository.CountTakenSeatsAsync([screeningId], _timeProvider.GetUtcNow().UtcDateTime, cancellationToken);
-        return takenSeats.GetValueOrDefault(screeningId) > 0;
     }
 }

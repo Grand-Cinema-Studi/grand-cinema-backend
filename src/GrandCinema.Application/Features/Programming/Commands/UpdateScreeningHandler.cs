@@ -34,7 +34,7 @@ public sealed class UpdateScreeningHandler : ICommandHandler<UpdateScreeningComm
         {
             return ProgrammingErrors.ScreeningStarted;
         }
-        if (!command.Confirmed && await HasTakenSeatsAsync(screening.Id, cancellationToken))
+        if (!command.Confirmed && await _screeningReadRepository.HasTakenSeatsAsync(screening.Id, _timeProvider.GetUtcNow().UtcDateTime, cancellationToken))
         {
             return ProgrammingErrors.ScreeningHasReservations;
         }
@@ -49,12 +49,5 @@ public sealed class UpdateScreeningHandler : ICommandHandler<UpdateScreeningComm
 
         await _programmingRepository.UpdateScreeningAsync(screening.Id, command.StartsAt, command.Price, cancellationToken);
         return screening.Id;
-    }
-
-    // Seats held (not expired) or sold, counted as the remaining seats of the schedule
-    private async Task<bool> HasTakenSeatsAsync(Guid screeningId, CancellationToken cancellationToken)
-    {
-        var takenSeats = await _screeningReadRepository.CountTakenSeatsAsync([screeningId], _timeProvider.GetUtcNow().UtcDateTime, cancellationToken);
-        return takenSeats.GetValueOrDefault(screeningId) > 0;
     }
 }
