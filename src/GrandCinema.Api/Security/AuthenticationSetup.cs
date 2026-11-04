@@ -1,8 +1,8 @@
 using System.Threading.RateLimiting;
+using GrandCinema.Domain.Enums;
 using GrandCinema.Infrastructure.Security;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 
 namespace GrandCinema.Api.Security;
@@ -10,6 +10,7 @@ namespace GrandCinema.Api.Security;
 internal static class AuthenticationSetup
 {
     public const string AuthenticationRateLimitingPolicy = "authentication";
+    public const string ManagerPolicy = "manager";
 
     public static IServiceCollection AddJwtAuthentication(this IServiceCollection services)
     {
@@ -37,7 +38,8 @@ internal static class AuthenticationSetup
 
         // An endpoint that declares nothing is reserved to signed-in users: a public endpoint is never public by mistake.
         services.AddAuthorizationBuilder()
-            .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
+            .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build())
+            .AddPolicy(ManagerPolicy, policy => policy.RequireRole(nameof(UserRole.Manager)));
 
         return services;
     }
