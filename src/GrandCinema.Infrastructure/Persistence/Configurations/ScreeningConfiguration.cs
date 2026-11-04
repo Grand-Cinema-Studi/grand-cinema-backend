@@ -19,5 +19,9 @@ public sealed class ScreeningConfiguration : IEntityTypeConfiguration<Screening>
         builder.HasIndex(s => new { s.RoomId, s.StartsAt });
 
         builder.HasIndex(s => s.StartsAt);
+
+        // A cancelled screening is left out of every query (schedule, movie page, hold, programming),
+        // as if it no longer existed. IgnoreQueryFilters() reads it again where the history matters
+        builder.HasQueryFilter(s => s.CancelledAt == null);
     }
 }
