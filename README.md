@@ -51,7 +51,7 @@ La couche Application est rangée par fonctionnalité (`Features/<Fonctionnalit�
 | US 2.2 | Voir les places restantes en temps réel | Fait (API et front) : `remainingSeats` sur chaque séance de `GET /api/schedule` et de `GET /api/movies/{id}` |
 | US 2.3 | Réserver un nombre de places et passer au paiement | Fait (API et front) : `POST /api/reservations` (blocage de 10 minutes, sans double vente, au plus 10 places par compte et par séance), `GET /api/reservations/{id}`, `DELETE /api/reservations/{id}` (annulation avant paiement, places remises en vente aussitôt) ; paiement avec l'US 3.1 |
 | US 3.1 | Payer en ligne (Stripe, mode test) | Fait côté API : `POST /api/reservations/{id}/payment` (conditions générales de vente acceptées, page de paiement Stripe), `POST /api/payments/stripe-webhook` (confirmation par notification signée, remboursement d'un paiement arrivé après la libération des places) ; écran dans le front |
-| US 5.2 | Gérer la programmation | À faire |
+| US 5.2 | Gérer la programmation | Fait côté API : `GET /api/programming`, `POST /api/programming/screenings`, `PUT` et `DELETE /api/programming/screenings/{id}`, réservés au responsable (`Manager`) ; avertissement quand des places sont prises, salle libre nettoyage compris, séance annulée cachée partout mais gardée ; écran dans le front |
 | US 5.3 | Suivre les réservations | À faire |
 
 Les user stories, leurs critères d'acceptation, la Definition of Ready et la Definition of Done sont dans le [dépôt de documentation](https://github.com/Grand-Cinema-Studi/grand-cinema-docs) et sur le [Project GitHub](https://github.com/orgs/Grand-Cinema-Studi/projects/3).
@@ -72,10 +72,14 @@ Les user stories, leurs critères d'acceptation, la Definition of Ready et la De
 | `GET` | `/api/reservations/{id}` | Un blocage ou une réservation de l'utilisateur connecté, avec son film, ses places et son statut (`PendingPayment`, `Expired`, `Cancelled`, `Confirmed`) ; `404` pour celle d'un autre |
 | `POST` | `/api/reservations/{id}/payment` | Page de paiement Stripe d'un blocage de l'utilisateur connecté (`200`, `checkoutUrl`) ; `acceptTermsOfSale: true` obligatoire (sinon `400`), date et version des conditions générales de vente enregistrées ; `409 hold-expired` après les 10 minutes ou une annulation, `409 reservation-paid` si elle est déjà payée |
 | `POST` | `/api/payments/stripe-webhook` | Notification de Stripe, sans jeton : signature (`Stripe-Signature`) vérifiée avant tout, `400` sinon ; un paiement abouti confirme la réservation une seule fois ; un paiement arrivé après la libération des places, ou un second paiement, est remboursé |
+| `GET` | `/api/programming?date=AAAA-MM-JJ` | Responsable seulement : toutes les séances du jour (commencées comprises) avec places prises et capacité, le catalogue des films et les salles |
+| `POST` | `/api/programming/screenings` | Responsable seulement : création d'une séance (film, salle, heure locale du cinéma sans fuseau, prix) (`201`) ; `400` pour une heure passée, avec fuseau, ou un prix nul ; `409 room-not-available` si la salle est occupée à ce moment, nettoyage de 15 minutes compris |
+| `PUT` | `/api/programming/screenings/{id}` | Responsable seulement : nouvelle date, heure ou prix (`204`) ; ni la salle ni le film ne changent ; `409 screening-started`, `409 room-not-available` ; `409 screening-has-reservations` tant que des places sont prises et que la demande n'est pas renvoyée avec `?confirmed=true` |
+| `DELETE` | `/api/programming/screenings/{id}` | Responsable seulement : annulation (`204`) ; la séance disparaît de toutes les lectures, ses blocages sont annulés, ses ventes gardées ; même avertissement que la modification |
 | `GET` | `/health` | État de l'application (`Healthy`) |
 | `GET` | `/` | Nom de l'API |
 
-Tout endpoint est réservé aux utilisateurs connectés, sauf ceux déclarés publics (programmation, films à l'affiche, fiche d'un film, inscription, connexion, notification de Stripe, protégée par sa signature, `/health`). Une route inconnue répond donc `401` à un visiteur sans jeton, et non `404`. Dans Swagger, le bouton **Authorize** reçoit le jeton renvoyé par `POST /api/tokens`.
+Tout endpoint est réservé aux utilisateurs connectés, sauf ceux déclarés publics (programmation, films à l'affiche, fiche d'un film, inscription, connexion, notification de Stripe, protégée par sa signature, `/health`). Une route inconnue répond donc `401` à un visiteur sans jeton, et non `404`. La programmation (`/api/programming…`) est en plus réservée au rôle `Manager` : `403` pour tout autre rôle. Dans Swagger, le bouton **Authorize** reçoit le jeton renvoyé par `POST /api/tokens`.
 
 En développement, la documentation interactive est sur `/swagger` et le document OpenAPI sur `/openapi/v1.json`. Swagger est désactivé par défaut et s'active par configuration (`Swagger:Enabled`, ou la variable d'environnement `Swagger__Enabled=true`).
 
@@ -179,6 +183,8 @@ dotnet test --collect:"XPlat Code Coverage"       # avec mesure de couverture (C
 - Données de démonstration : [docs/database/seed-dev.sql](docs/database/seed-dev.sql)
 
 La double vente d'une place est empêchée de deux façons : le blocage se fait dans une transaction qui verrouille la séance (`SELECT … FOR UPDATE`), et une contrainte d'unicité sur `(ScreeningId, SeatId)` dans `ReservedSeats` refuse en base toute seconde vente. La confirmation d'un paiement prend le même verrou : elle ne peut pas croiser la libération des places d'un blocage expiré.
+
+Une séance annulée n'est jamais supprimée : elle garde la date de son annulation (`CancelledAt`), et un filtre global d'EF Core la retire de toutes les lectures. Ses ventes restent, pour le suivi, l'analyse et les remboursements ; la réservation d'un spectateur reste lisible (`IgnoreQueryFilters`).
 
 ## Branches et contributions
 
