@@ -52,7 +52,7 @@ La couche Application est rangée par fonctionnalité (`Features/<Fonctionnalit�
 | US 2.3 | Réserver un nombre de places et passer au paiement | Fait (API et front) : `POST /api/reservations` (blocage de 10 minutes, sans double vente, au plus 10 places par compte et par séance), `GET /api/reservations/{id}`, `DELETE /api/reservations/{id}` (annulation avant paiement, places remises en vente aussitôt) ; paiement avec l'US 3.1 |
 | US 3.1 | Payer en ligne (Stripe, mode test) | Fait côté API : `POST /api/reservations/{id}/payment` (conditions générales de vente acceptées, page de paiement Stripe), `POST /api/payments/stripe-webhook` (confirmation par notification signée, remboursement d'un paiement arrivé après la libération des places) ; écran dans le front |
 | US 5.2 | Gérer la programmation | Fait (API et front) : `GET /api/programming`, `POST /api/programming/screenings`, `PUT` et `DELETE /api/programming/screenings/{id}`, réservés au responsable (`Manager`) ; avertissement quand des places sont prises, salle libre nettoyage compris, séance annulée cachée partout mais gardée |
-| US 5.3 | Suivre les réservations | À faire |
+| US 5.3 | Suivre les réservations | Fait (API et front) : `GET /api/reservation-tracking`, réservé au responsable : par séance d'un jour, places vendues en ligne et au guichet, bloquées, capacité et places restantes ; lecture par projection SQL (ADR 0004) |
 
 Les user stories, leurs critères d'acceptation, la Definition of Ready et la Definition of Done sont dans le [dépôt de documentation](https://github.com/Grand-Cinema-Studi/grand-cinema-docs) et sur le [Project GitHub](https://github.com/orgs/Grand-Cinema-Studi/projects/3).
 
@@ -77,6 +77,7 @@ Les user stories, leurs critères d'acceptation, la Definition of Ready et la De
 | `POST` | `/api/programming/screenings` | Responsable seulement : création d'une séance (film, salle, heure locale du cinéma sans fuseau, prix) (`201`) ; `400` pour une heure passée, avec fuseau, ou un prix nul ; `409 room-not-available` si la salle est occupée à ce moment, nettoyage de 15 minutes compris |
 | `PUT` | `/api/programming/screenings/{id}` | Responsable seulement : nouvelle date, heure ou prix (`204`) ; ni la salle ni le film ne changent ; `409 screening-started`, `409 room-not-available` ; `409 screening-has-reservations` tant que des places sont prises et que la demande n'est pas renvoyée avec `?confirmed=true` |
 | `DELETE` | `/api/programming/screenings/{id}` | Responsable seulement : annulation (`204`) ; la séance disparaît de toutes les lectures, ses blocages sont annulés, ses ventes gardées ; même avertissement que la modification |
+| `GET` | `/api/reservation-tracking?date=AAAA-MM-JJ` | Responsable seulement : chaque séance du jour (commencées comprises, annulées exclues) avec places vendues en ligne (payées sur Stripe) et au guichet, bloquées par un paiement en cours, capacité et places restantes |
 | `GET` | `/health` | État de l'application (`Healthy`) |
 | `GET` | `/` | Nom de l'API |
 
