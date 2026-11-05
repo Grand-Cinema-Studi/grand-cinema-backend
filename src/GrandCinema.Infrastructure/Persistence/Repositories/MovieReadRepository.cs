@@ -27,4 +27,7 @@ public sealed class MovieReadRepository : IMovieReadRepository
             .AsNoTracking()
             .FirstOrDefaultAsync(m => m.Id == movieId, cancellationToken);
     }
+
+    public Task<IReadOnlyList<Movie>> GetMoviesByNextScreeningAsync(DateTime from, int count, CancellationToken cancellationToken = default) =>
+        throw new NotImplementedException();
 }
