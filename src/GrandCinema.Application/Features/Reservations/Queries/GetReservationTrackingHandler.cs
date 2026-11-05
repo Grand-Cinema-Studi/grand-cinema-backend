@@ -15,6 +15,11 @@ public class GetReservationTrackingHandler : IQueryHandler<GetReservationTrackin
         _timeProvider = timeProvider;
     }
 
-    public Task<ReservationTrackingDto> Handle(GetReservationTrackingQuery query, CancellationToken cancellationToken = default) =>
-        throw new NotImplementedException();
+    public async Task<ReservationTrackingDto> Handle(GetReservationTrackingQuery query, CancellationToken cancellationToken = default)
+    {
+        // The day of the cinema; the holds expire at an instant in UTC
+        var date = query.Date ?? DateOnly.FromDateTime(_timeProvider.GetLocalNow().DateTime);
+        var screenings = await _reservationTrackingQueries.GetScreeningsOfDayAsync(date, _timeProvider.GetUtcNow().UtcDateTime, cancellationToken);
+        return new ReservationTrackingDto { Date = date, Screenings = screenings };
+    }
 }
