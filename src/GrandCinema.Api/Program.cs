@@ -61,6 +61,7 @@ app.MapHealthChecks("/health").AllowAnonymous();
 app.MapScheduleEndpoints();
 app.MapMoviesShowingEndpoints();
 app.MapMovieDetailsEndpoints();
+app.MapFeaturedMoviesEndpoints();
 app.MapHoldSeatsEndpoints();
 app.MapGetReservationEndpoints();
 app.MapCancelHoldEndpoints();

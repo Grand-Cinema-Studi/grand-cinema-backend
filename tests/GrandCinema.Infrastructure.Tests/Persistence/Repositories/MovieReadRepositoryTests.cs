@@ -83,4 +83,50 @@ public class MovieReadRepositoryTests : IClassFixture<PostgreSqlFixture>
         found.Title.ShouldBe("Blue Note");
         unknown.ShouldBeNull();
     }
+
+    [Fact]
+    [Trait("US", "1.1")]
+    [Trait("Category", "Integration")]
+    public async Task When_movies_are_featured_Then_the_nearest_next_screening_comes_first_and_started_or_cancelled_ones_do_not_count()
+    {
+        // Arrange: it is 12:00 on 1 January 2040
+        var now = new DateTime(2040, 1, 1, 12, 0, 0, DateTimeKind.Unspecified);
+        var room = new Room { Id = Guid.NewGuid(), Name = $"Room {Guid.NewGuid():N}", Capacity = 100 };
+        Movie NewMovie(string title) => new()
+        {
+            Id = Guid.NewGuid(),
+            Title = title,
+            Synopsis = "Synopsis",
+            DurationMinutes = 100,
+            Genre = "Drama",
+            ReleaseDate = new DateOnly(2039, 1, 1),
+            PosterUrl = "https://example.com/p.jpg"
+        };
+        var startedThisMorning = NewMovie("Started this morning");
+        var cancelledThisAfternoon = NewMovie("Cancelled this afternoon");
+        var tonight = NewMovie("Tonight");
+        var tomorrow = NewMovie("Tomorrow");
+        var nextMonth = NewMovie("Next month");
+        Screening At(Movie movie, DateTime startsAt, DateTime? cancelledAt = null) =>
+            new() { Id = Guid.NewGuid(), Movie = movie, Room = room, StartsAt = startsAt, Price = 9m, CancelledAt = cancelledAt };
+
+        await using (var seed = _database.CreateDbContext())
+        {
+            seed.Screenings.AddRange(
+                At(startedThisMorning, now.AddHours(-1)),
+                At(cancelledThisAfternoon, now.AddHours(2), new DateTime(2039, 12, 31, 10, 0, 0, DateTimeKind.Utc)),
+                At(tonight, now.AddHours(9)),
+                At(tonight, now.AddDays(4)),
+                At(tomorrow, now.AddDays(1)),
+                At(nextMonth, now.AddMonths(1)));
+            await seed.SaveChangesAsync();
+        }
+
+        // Act: two at most
+        await using var db = _database.CreateDbContext();
+        var movies = await new MovieReadRepository(db).GetMoviesByNextScreeningAsync(now, 2);
+
+        // Assert: tonight, then tomorrow; next month comes third and is left out by the limit
+        movies.Select(m => m.Title).ShouldBe(new[] { "Tonight", "Tomorrow" });
+    }
 }
