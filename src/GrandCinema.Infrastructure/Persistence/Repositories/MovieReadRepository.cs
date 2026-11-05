@@ -28,6 +28,15 @@ public sealed class MovieReadRepository : IMovieReadRepository
             .FirstOrDefaultAsync(m => m.Id == movieId, cancellationToken);
     }
 
-    public Task<IReadOnlyList<Movie>> GetMoviesByNextScreeningAsync(DateTime from, int count, CancellationToken cancellationToken = default) =>
-        throw new NotImplementedException();
+    public async Task<IReadOnlyList<Movie>> GetMoviesByNextScreeningAsync(DateTime from, int count, CancellationToken cancellationToken = default)
+    {
+        // A screening that has started does not count (StartsAt > from), a cancelled one is hidden by the global filter
+        return await _db.Movies
+            .AsNoTracking()
+            .Where(m => _db.Screenings.Any(s => s.MovieId == m.Id && s.StartsAt > from))
+            .OrderBy(m => _db.Screenings.Where(s => s.MovieId == m.Id && s.StartsAt > from).Min(s => s.StartsAt))
+            .ThenBy(m => m.Title)
+            .Take(count)
+            .ToListAsync(cancellationToken);
+    }
 }
