@@ -1,8 +1,10 @@
 using GrandCinema.Application.Abstractions.Payments;
 using GrandCinema.Application.Abstractions.Persistence;
 using GrandCinema.Application.Abstractions.Security;
+using GrandCinema.Application.Features.Reservations.Queries;
 using GrandCinema.Infrastructure.Payments;
 using GrandCinema.Infrastructure.Persistence;
+using GrandCinema.Infrastructure.Persistence.Queries;
 using GrandCinema.Infrastructure.Persistence.Repositories;
 using GrandCinema.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
@@ -25,6 +27,9 @@ public static class DependencyInjection
         services.AddScoped<IMovieReadRepository, MovieReadRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IReservationRepository, ReservationRepository>();
+
+        // Reads of aggregates, projected by PostgreSQL (ADR 0004)
+        services.AddScoped<IReservationTrackingQueries, ReservationTrackingQueries>();
 
         // Read on first use, not at startup: the EF Core design-time tools build the host without any JWT settings.
         services.AddSingleton(_ => JwtOptions.FromConfiguration(configuration));

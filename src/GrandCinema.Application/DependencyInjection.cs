@@ -40,6 +40,7 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<UpdateScreeningCommand, Result<Guid>>, UpdateScreeningHandler>();
         services.AddScoped<ICommandHandler<CancelScreeningCommand, Result<Guid>>, CancelScreeningHandler>();
         services.AddScoped<IQueryHandler<GetFeaturedMoviesQuery, IReadOnlyList<MovieDto>>, GetFeaturedMoviesHandler>();
+        services.AddScoped<IQueryHandler<GetReservationTrackingQuery, ReservationTrackingDto>, GetReservationTrackingHandler>();
 
         return services;
     }
