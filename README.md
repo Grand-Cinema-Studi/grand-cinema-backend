@@ -46,12 +46,12 @@ La couche Application est rangée par fonctionnalité (`Features/<Fonctionnalit�
 
 | User story | Contenu | État |
 |---|---|---|
-| US 1.1 | Consulter les films et les horaires | Fait côté API : `GET /api/schedule`, `GET /api/movies`, `GET /api/movies/{id}` (fiche d'un film avec toutes ses séances à venir, réservables jusqu'à un an à l'avance) ; écrans dans le front |
+| US 1.1 | Consulter les films et les horaires | Fait côté API : `GET /api/schedule`, `GET /api/movies`, `GET /api/movies/featured` (films à la une), `GET /api/movies/{id}` (fiche d'un film avec toutes ses séances à venir, réservables jusqu'à un an à l'avance) ; écrans dans le front |
 | US 2.1 | Créer un compte et se connecter | Fait (API et front) : `POST /api/users` (avec l'acceptation de la politique de confidentialité), `POST /api/tokens`, `GET /api/users/me`, `DELETE /api/users/me` |
 | US 2.2 | Voir les places restantes en temps réel | Fait (API et front) : `remainingSeats` sur chaque séance de `GET /api/schedule` et de `GET /api/movies/{id}` |
 | US 2.3 | Réserver un nombre de places et passer au paiement | Fait (API et front) : `POST /api/reservations` (blocage de 10 minutes, sans double vente, au plus 10 places par compte et par séance), `GET /api/reservations/{id}`, `DELETE /api/reservations/{id}` (annulation avant paiement, places remises en vente aussitôt) ; paiement avec l'US 3.1 |
 | US 3.1 | Payer en ligne (Stripe, mode test) | Fait côté API : `POST /api/reservations/{id}/payment` (conditions générales de vente acceptées, page de paiement Stripe), `POST /api/payments/stripe-webhook` (confirmation par notification signée, remboursement d'un paiement arrivé après la libération des places) ; écran dans le front |
-| US 5.2 | Gérer la programmation | Fait côté API : `GET /api/programming`, `POST /api/programming/screenings`, `PUT` et `DELETE /api/programming/screenings/{id}`, réservés au responsable (`Manager`) ; avertissement quand des places sont prises, salle libre nettoyage compris, séance annulée cachée partout mais gardée ; écran dans le front |
+| US 5.2 | Gérer la programmation | Fait (API et front) : `GET /api/programming`, `POST /api/programming/screenings`, `PUT` et `DELETE /api/programming/screenings/{id}`, réservés au responsable (`Manager`) ; avertissement quand des places sont prises, salle libre nettoyage compris, séance annulée cachée partout mais gardée |
 | US 5.3 | Suivre les réservations | À faire |
 
 Les user stories, leurs critères d'acceptation, la Definition of Ready et la Definition of Done sont dans le [dépôt de documentation](https://github.com/Grand-Cinema-Studi/grand-cinema-docs) et sur le [Project GitHub](https://github.com/orgs/Grand-Cinema-Studi/projects/3).
@@ -62,6 +62,7 @@ Les user stories, leurs critères d'acceptation, la Definition of Ready et la De
 |---|---|---|
 | `GET` | `/api/schedule?date=AAAA-MM-JJ` | Films et séances d'un jour (aujourd'hui si la date est omise), séances pas encore commencées seulement, films triés par titre, séances triées par heure, avec les places restantes de chaque séance (vendues et paiements en cours déduits) |
 | `GET` | `/api/movies` | Films à l'affiche (au moins une séance à venir), triés par titre |
+| `GET` | `/api/movies/featured` | Films à la une de l'accueil : au plus 4, ceux dont la prochaine séance est la plus proche (aujourd'hui, puis les jours et mois suivants) ; une séance commencée ou annulée ne compte pas |
 | `GET` | `/api/movies/{id}` | Un film et toutes ses séances à venir (sans limite de date), regroupées par jour, avec les places restantes ; `404` si le film n'existe pas |
 | `POST` | `/api/users` | Création d'un compte spectateur ; `acceptPrivacyPolicy: true` obligatoire (date et version de la politique enregistrées) ; renvoie un jeton d'accès (`201`) |
 | `POST` | `/api/tokens` | Connexion : renvoie un jeton d'accès (`200`), ou `401` sans préciser si l'adresse ou le mot de passe est faux |
@@ -79,7 +80,7 @@ Les user stories, leurs critères d'acceptation, la Definition of Ready et la De
 | `GET` | `/health` | État de l'application (`Healthy`) |
 | `GET` | `/` | Nom de l'API |
 
-Tout endpoint est réservé aux utilisateurs connectés, sauf ceux déclarés publics (programmation, films à l'affiche, fiche d'un film, inscription, connexion, notification de Stripe, protégée par sa signature, `/health`). Une route inconnue répond donc `401` à un visiteur sans jeton, et non `404`. La programmation (`/api/programming…`) est en plus réservée au rôle `Manager` : `403` pour tout autre rôle. Dans Swagger, le bouton **Authorize** reçoit le jeton renvoyé par `POST /api/tokens`.
+Tout endpoint est réservé aux utilisateurs connectés, sauf ceux déclarés publics (programmation, films à l'affiche, films à la une, fiche d'un film, inscription, connexion, notification de Stripe, protégée par sa signature, `/health`). Une route inconnue répond donc `401` à un visiteur sans jeton, et non `404`. La programmation (`/api/programming…`) est en plus réservée au rôle `Manager` : `403` pour tout autre rôle. Dans Swagger, le bouton **Authorize** reçoit le jeton renvoyé par `POST /api/tokens`.
 
 En développement, la documentation interactive est sur `/swagger` et le document OpenAPI sur `/openapi/v1.json`. Swagger est désactivé par défaut et s'active par configuration (`Swagger:Enabled`, ou la variable d'environnement `Swagger__Enabled=true`).
 
