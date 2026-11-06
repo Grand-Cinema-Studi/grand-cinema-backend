@@ -66,6 +66,7 @@ app.MapHoldSeatsEndpoints();
 app.MapGetReservationEndpoints();
 app.MapCancelHoldEndpoints();
 app.MapReservationTrackingEndpoints();
+app.MapTicketEndpoints();
 app.MapStartPaymentEndpoints();
 app.MapStripeWebhookEndpoints();
 app.MapProgrammingEndpoints();
