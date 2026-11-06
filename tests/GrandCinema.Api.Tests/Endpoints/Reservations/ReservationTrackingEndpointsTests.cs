@@ -87,4 +87,23 @@ public class ReservationTrackingEndpointsTests
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
+
+    [Fact]
+    [Trait("US", "5.1")]
+    [Trait("Category", "Integration")]
+    public async Task When_the_cashier_follows_a_day_Then_200()
+    {
+        // Arrange
+        await ScreeningWithReservationsAsync(new DateTime(2032, 4, 3, 20, 30, 0, DateTimeKind.Unspecified));
+        using var cashier = await _api.CreateClientWithRoleAsync(UserRole.Cashier);
+
+        // Act
+        var response = await cashier.GetAsync("/api/reservation-tracking?date=2032-04-03");
+
+        // Assert: criterion 1, the seats sold online and those left
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var screening = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("screenings").EnumerateArray().ShouldHaveSingleItem();
+        screening.GetProperty("soldOnline").GetInt32().ShouldBe(2);
+        screening.GetProperty("remainingSeats").GetInt32().ShouldBe(2);
+    }
 }
