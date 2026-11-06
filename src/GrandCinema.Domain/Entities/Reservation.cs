@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using GrandCinema.Domain.Enums;
 
 namespace GrandCinema.Domain.Entities;
@@ -56,5 +57,5 @@ public class Reservation
     public bool HasExpired(DateTime nowUtc) => Status == ReservationStatus.PendingPayment && ExpiresAt <= nowUtc;
 
     /// <summary>A code that cannot be guessed, drawn when the payment is confirmed.</summary>
-    public static string NewTicketCode() => throw new NotImplementedException();
+    public static string NewTicketCode() => Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
 }
