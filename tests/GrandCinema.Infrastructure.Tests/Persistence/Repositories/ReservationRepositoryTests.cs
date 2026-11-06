@@ -345,4 +345,34 @@ public class ReservationRepositoryTests : IClassFixture<PostgreSqlFixture>
         accepted.TermsOfSaleVersion.ShouldBe("2026-11-02");
         accepted.TermsOfSaleAcceptedAt.ShouldBe(Now);
     }
+
+    [Fact]
+    [Trait("US", "3.2")]
+    [Trait("Category", "Integration")]
+    public async Task When_a_payment_is_confirmed_Then_a_ticket_code_is_drawn_once_and_only_then()
+    {
+        // Arrange: a valid hold, and a hold whose seats were freed before its payment
+        var (screening, seats) = await ScreeningWithSeatsAsync(("A", 1));
+        var hold = await ReservationAsync(screening, ReservationStatus.PendingPayment, Now.AddMinutes(5), seats["A1"]);
+        var freed = await ReservationAsync(screening, ReservationStatus.Expired, Now.AddMinutes(-15));
+        await using var db = _database.CreateDbContext();
+        var repository = new ReservationRepository(db);
+
+        // Act: the payment, the same notification again, and a late payment
+        await repository.ConfirmPaymentAsync(hold, "pi_paid", Now);
+        string? CodeOf(Guid id)
+        {
+            using var readDb = _database.CreateDbContext();
+            return readDb.Reservations.Single(r => r.Id == id).TicketCode;
+        }
+        var drawn = CodeOf(hold);
+        await repository.ConfirmPaymentAsync(hold, "pi_paid", Now.AddSeconds(30));
+        await repository.ConfirmPaymentAsync(freed, "pi_late", Now);
+
+        // Assert: criterion 1 and criterion 3
+        drawn.ShouldNotBeNull();
+        drawn.ShouldMatch("^[0-9a-f]{32}$");
+        CodeOf(hold).ShouldBe(drawn);
+        CodeOf(freed).ShouldBeNull();
+    }
 }

@@ -46,4 +46,16 @@ public class ReservationTests
         hold.Status = ReservationStatus.Confirmed;
         hold.HasExpired(Now.AddHours(1)).ShouldBeFalse();
     }
+
+    [Fact]
+    [Trait("US", "3.2")]
+    public void When_ticket_codes_are_drawn_Then_each_has_32_hexadecimal_characters_and_they_differ()
+    {
+        // Act
+        var codes = Enumerable.Range(0, 1000).Select(_ => Reservation.NewTicketCode()).ToList();
+
+        // Assert: 128 random bits, written in lower-case hexadecimal; never the same twice
+        codes.ShouldAllBe(code => System.Text.RegularExpressions.Regex.IsMatch(code, "^[0-9a-f]{32}$"));
+        codes.Distinct().Count().ShouldBe(1000);
+    }
 }

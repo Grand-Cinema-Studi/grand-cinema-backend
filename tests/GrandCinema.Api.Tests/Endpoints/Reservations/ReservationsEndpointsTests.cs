@@ -315,4 +315,81 @@ public class ReservationsEndpointsTests
         var reservation = await client.GetFromJsonAsync<JsonElement>(hold.Location);
         reservation.GetProperty("status").GetString().ShouldBe("PendingPayment");
     }
+
+    [Fact]
+    [Trait("US", "3.2")]
+    [Trait("Category", "Integration")]
+    public async Task When_a_paid_reservation_is_read_Then_its_ticket_shows_the_movie_the_screening_the_room_the_seats_and_a_code()
+    {
+        // Arrange: 2 seats held, then paid
+        var hold = await HoldAsync(2, new DateTime(2032, 6, 1, 20, 30, 0, DateTimeKind.Unspecified));
+        using var client = hold.Client;
+        using var stripe = _api.CreateVisitorClient();
+        (await stripe.SendAsync(StripeNotification(hold.ReservationId, FakePaymentGateway.ValidSignature))).EnsureSuccessStatusCode();
+
+        // Act
+        var response = await client.GetAsync($"{hold.Location}/ticket");
+
+        // Assert: criterion 1, and the names the front relies on
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var ticket = await response.Content.ReadFromJsonAsync<JsonElement>();
+        ticket.GetProperty("reservationId").GetString().ShouldBe(hold.ReservationId);
+        // ShouldNotBeNull tells the compiler that the code is not null below
+        var ticketCode = ticket.GetProperty("ticketCode").GetString();
+        ticketCode.ShouldNotBeNull();
+        ticketCode.ShouldMatch("^[0-9a-f]{32}$");
+        ticket.GetProperty("movieTitle").GetString().ShouldBe("Reservations contract");
+        ticket.GetProperty("startsAt").GetString().ShouldBe("2032-06-01T20:30:00");
+        ticket.GetProperty("roomName").GetString().ShouldStartWith("Room ");
+        ticket.GetProperty("seats").EnumerateArray().Select(seat => seat.GetString()).ShouldBe(new[] { "A1", "A2" });
+        ticket.GetProperty("screeningCancelled").GetBoolean().ShouldBeFalse();
+    }
+
+    [Fact]
+    [Trait("US", "3.2")]
+    [Trait("Category", "Integration")]
+    public async Task When_the_reservation_is_not_paid_Then_it_has_no_ticket()
+    {
+        // Arrange: held, never paid (or refused by the bank: Stripe sends nothing)
+        var hold = await HoldAsync(1, new DateTime(2032, 6, 2, 20, 30, 0, DateTimeKind.Unspecified));
+        using var client = hold.Client;
+
+        // Act
+        var response = await client.GetAsync($"{hold.Location}/ticket");
+
+        // Assert: criterion 3
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        problem.GetProperty("type").GetString().ShouldBe("/errors/ticket-not-found");
+    }
+
+    [Fact]
+    [Trait("US", "3.2")]
+    [Trait("Category", "Integration")]
+    public async Task When_a_customer_lists_their_tickets_Then_only_their_paid_reservations_are_listed()
+    {
+        // Arrange: the customer pays one reservation, holds another without paying; another customer pays one
+        var paid = await HoldAsync(2, new DateTime(2032, 6, 3, 20, 30, 0, DateTimeKind.Unspecified));
+        using var client = paid.Client;
+        var otherScreeningId = await ScreeningWithSeatsAsync(1, new DateTime(2032, 6, 4, 20, 30, 0, DateTimeKind.Unspecified));
+        (await client.PostAsJsonAsync("/api/reservations", new { screeningId = otherScreeningId, seatCount = 1 })).EnsureSuccessStatusCode();
+        var someoneElse = await HoldAsync(1, new DateTime(2032, 6, 5, 20, 30, 0, DateTimeKind.Unspecified));
+        someoneElse.Client.Dispose();
+        using var stripe = _api.CreateVisitorClient();
+        (await stripe.SendAsync(StripeNotification(paid.ReservationId, FakePaymentGateway.ValidSignature))).EnsureSuccessStatusCode();
+        (await stripe.SendAsync(StripeNotification(someoneElse.ReservationId, FakePaymentGateway.ValidSignature))).EnsureSuccessStatusCode();
+
+        // Act
+        var response = await client.GetAsync("/api/users/me/tickets");
+
+        // Assert: criterion 2
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var tickets = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var ticket = tickets.EnumerateArray().ShouldHaveSingleItem();
+        ticket.GetProperty("reservationId").GetString().ShouldBe(paid.ReservationId);
+        ticket.GetProperty("movieTitle").GetString().ShouldBe("Reservations contract");
+        ticket.GetProperty("startsAt").GetString().ShouldBe("2032-06-03T20:30:00");
+        ticket.GetProperty("seatCount").GetInt32().ShouldBe(2);
+        ticket.GetProperty("screeningCancelled").GetBoolean().ShouldBeFalse();
+    }
 }

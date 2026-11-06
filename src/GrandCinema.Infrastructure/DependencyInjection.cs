@@ -30,6 +30,7 @@ public static class DependencyInjection
 
         // Reads of aggregates, projected by PostgreSQL (ADR 0004)
         services.AddScoped<IReservationTrackingQueries, ReservationTrackingQueries>();
+        services.AddScoped<ITicketQueries, TicketQueries>();
 
         // Read on first use, not at startup: the EF Core design-time tools build the host without any JWT settings.
         services.AddSingleton(_ => JwtOptions.FromConfiguration(configuration));

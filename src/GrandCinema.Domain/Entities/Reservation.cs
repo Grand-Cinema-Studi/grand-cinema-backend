@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using GrandCinema.Domain.Enums;
 
 namespace GrandCinema.Domain.Entities;
@@ -23,6 +24,8 @@ public class Reservation
     // proof that the terms of sale were accepted before paying, and which version
     public DateTime? TermsOfSaleAcceptedAt { get; set; }
     public string? TermsOfSaleVersion { get; set; }
+    // The code of the ticket, shown as a QR code and checked. null until paid
+    public string? TicketCode { get; set; }
     public ICollection<ReservedSeat> ReservedSeats { get; set; } = new List<ReservedSeat>();
     public Screening Screening { get; set; } = null!;
 
@@ -52,4 +55,7 @@ public class Reservation
 
     /// <summary>A hold whose 10 minutes have run out frees its seats, even before it is marked "Expired".</summary>
     public bool HasExpired(DateTime nowUtc) => Status == ReservationStatus.PendingPayment && ExpiresAt <= nowUtc;
+
+    /// <summary>A code that cannot be guessed, drawn when the payment is confirmed.</summary>
+    public static string NewTicketCode() => Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
 }

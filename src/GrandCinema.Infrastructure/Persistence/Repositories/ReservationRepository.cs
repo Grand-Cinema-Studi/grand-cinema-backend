@@ -155,7 +155,8 @@ public sealed class ReservationRepository : IReservationRepository
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(r => r.Status, ReservationStatus.Confirmed)
                 .SetProperty(r => r.PaidAt, nowUtc)
-                .SetProperty(r => r.PaymentReference, paymentReference), cancellationToken);
+                .SetProperty(r => r.PaymentReference, paymentReference)
+                .SetProperty(r => r.TicketCode, Reservation.NewTicketCode()), cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         if (confirmed == 1)
         {

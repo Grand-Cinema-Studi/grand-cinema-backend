@@ -20,6 +20,10 @@ public static class ReservationErrors
     public static readonly Error ReservationNotFound =
         Error.NotFound("reservation-not-found", "The reservation does not exist.");
 
+    // Not paid, unknown, or of another customer: one answer, nothing revealed
+    public static readonly Error TicketNotFound =
+        Error.NotFound("ticket-not-found", "This reservation has no ticket.");
+
     // A paid reservation is not cancelled online: refunds follow the terms of sale.
     public static readonly Error ReservationConfirmed =
         Error.Conflict("reservation-confirmed", "A paid reservation cannot be cancelled online.");

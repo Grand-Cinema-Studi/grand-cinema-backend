@@ -50,6 +50,7 @@ erDiagram
         uuid RoomId FK
         timestamp StartsAt "heure locale du cinéma"
         numeric Price "10,2"
+        timestamptz CancelledAt "UTC, nullable : séance annulée (US 5.2)"
     }
     Reservations {
         uuid Id PK
@@ -59,6 +60,11 @@ erDiagram
         timestamptz CreatedAt "UTC"
         timestamptz ExpiresAt "UTC, nullable"
         numeric TotalAmount "10,2"
+        timestamptz PaidAt "UTC, nullable (US 3.1)"
+        varchar PaymentReference "255, nullable : paiement Stripe"
+        timestamptz TermsOfSaleAcceptedAt "UTC, nullable"
+        varchar TermsOfSaleVersion "20, nullable"
+        varchar TicketCode UK "32, nullable : code du billet (US 3.2)"
     }
     ReservedSeats {
         uuid ReservationId PK, FK
@@ -90,6 +96,7 @@ L'énoncé cite cinq tables. `Rooms` et `ReservedSeats` sont ajoutées pour resp
 | `UNIQUE (RoomId, Row, Number)` | `Seats` | une place n'existe qu'une fois dans une salle |
 | `UNIQUE (Email)` | `Users` | un compte par adresse e-mail |
 | `UNIQUE (Name)` | `Rooms` | deux salles ne portent pas le même nom |
+| `UNIQUE (TicketCode)` | `Reservations` | deux billets n'ont jamais le même code (US 3.2) ; les réservations non payées, sans code (`NULL`), ne se gênent pas ; ajouté par la migration `AddTicketCode` |
 | `CHECK (Capacity > 0)` | `Rooms` | une salle a au moins une place |
 
 Index non uniques :
