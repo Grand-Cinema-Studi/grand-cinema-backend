@@ -137,3 +137,35 @@ VALUES ('20261028123408_DetachReservationsOfDeletedAccounts', '10.0.12');
 
 COMMIT;
 
+START TRANSACTION;
+ALTER TABLE "Reservations" ADD "PaidAt" timestamp with time zone;
+
+ALTER TABLE "Reservations" ADD "PaymentReference" character varying(255);
+
+ALTER TABLE "Reservations" ADD "TermsOfSaleAcceptedAt" timestamp with time zone;
+
+ALTER TABLE "Reservations" ADD "TermsOfSaleVersion" character varying(20);
+
+INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+VALUES ('20261101155805_AddPayment', '10.0.12');
+
+COMMIT;
+
+START TRANSACTION;
+ALTER TABLE "Screenings" ADD "CancelledAt" timestamp with time zone;
+
+INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+VALUES ('20261104111255_AddScreeningCancellation', '10.0.12');
+
+COMMIT;
+
+START TRANSACTION;
+ALTER TABLE "Reservations" ADD "TicketCode" character varying(32);
+
+CREATE UNIQUE INDEX "IX_Reservations_TicketCode" ON "Reservations" ("TicketCode");
+
+INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+VALUES ('20261106183000_AddTicketCode', '10.0.12');
+
+COMMIT;
+
