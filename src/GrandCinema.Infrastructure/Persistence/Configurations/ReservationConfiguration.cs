@@ -14,6 +14,9 @@ public sealed class ReservationConfiguration : IEntityTypeConfiguration<Reservat
         builder.Property(r => r.TotalAmount).HasPrecision(10, 2);
         builder.Property(r => r.PaymentReference).HasMaxLength(255);
         builder.Property(r => r.TermsOfSaleVersion).HasMaxLength(20);
+        // A ticket code is unique.
+        builder.Property(r => r.TicketCode).HasMaxLength(32);
+        builder.HasIndex(r => r.TicketCode).IsUnique();
 
         builder.HasOne(r => r.User).WithMany().HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.SetNull);
         builder.HasOne(r => r.Screening).WithMany().HasForeignKey(r => r.ScreeningId).OnDelete(DeleteBehavior.Restrict);
