@@ -172,4 +172,7 @@ public sealed class ReservationRepository : IReservationRepository
             ? PaymentConfirmation.AlreadyConfirmed
             : PaymentConfirmation.Rejected;
     }
+
+    public Task<TicketUse> UseTicketAsync(string ticketCode, Guid screeningId, DateTime nowUtc, CancellationToken cancellationToken = default) =>
+        throw new NotImplementedException();
 }

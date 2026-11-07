@@ -27,4 +27,10 @@ public interface IReservationRepository
     /// Confirmed while its seats are still held, AlreadyConfirmed for the same payment notified twice, Rejected otherwise.
     /// </summary>
     Task<PaymentConfirmation> ConfirmPaymentAsync(Guid reservationId, string paymentReference, DateTime nowUtc, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    // Marks the ticket used if it is a paid ticket of this screening not used yet, in one statement:
+    // two scans of the same ticket at the same instant let it in only once
+    /// </summary>
+    Task<TicketUse> UseTicketAsync(string ticketCode, Guid screeningId, DateTime nowUtc, CancellationToken cancellationToken = default);
 }
