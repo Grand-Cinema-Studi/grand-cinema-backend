@@ -13,6 +13,7 @@ internal static class AuthenticationSetup
     public const string ManagerPolicy = "manager";
     public const string ReservationTrackingPolicy = "reservation-tracking";
     public const string TicketInspectionPolicy = "ticket-inspection";
+    public const string CustomerPolicy = "customer";
 
     public static IServiceCollection AddJwtAuthentication(this IServiceCollection services)
     {
@@ -41,6 +42,7 @@ internal static class AuthenticationSetup
         // An endpoint that declares nothing is reserved to signed-in users: a public endpoint is never public by mistake.
         services.AddAuthorizationBuilder()
             .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build())
+            .AddPolicy(CustomerPolicy, policy => policy.RequireRole(nameof(UserRole.Customer)))
             .AddPolicy(ManagerPolicy, policy => policy.RequireRole(nameof(UserRole.Manager)))
             .AddPolicy(ReservationTrackingPolicy, policy => policy.RequireRole(nameof(UserRole.Manager), nameof(UserRole.Cashier)))
             .AddPolicy(TicketInspectionPolicy, policy => policy.RequireRole(nameof(UserRole.TicketInspector)));
