@@ -498,4 +498,23 @@ public class ReservationsEndpointsTests
         // Assert: only the inspector lets people in (Bloc 1)
         response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
+
+    [Theory]
+    [Trait("US", "2.3")]
+    [Trait("Category", "Integration")]
+    [InlineData(UserRole.Cashier)]
+    [InlineData(UserRole.TicketInspector)]
+    [InlineData(UserRole.Manager)]
+    public async Task When_a_staff_member_holds_seats_Then_403(UserRole role)
+    {
+        // Arrange: a screening with seats left, each case its own (one minute apart)
+        var screeningId = await ScreeningWithSeatsAsync(2, new DateTime(2032, 6, 20, 20, 30, 0, DateTimeKind.Unspecified).AddMinutes((int)role));
+        using var client = await _api.CreateClientWithRoleAsync(role);
+
+        // Act
+        var response = await client.PostAsJsonAsync("/api/reservations", new { screeningId, seatCount = 1 });
+
+        // Assert: only a customer buys a ticket (decision of the Product Owner, 07/11/2026)
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
 }
