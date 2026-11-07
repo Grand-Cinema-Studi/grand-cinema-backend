@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using GrandCinema.Domain.Entities;
+using GrandCinema.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Shouldly;
 
@@ -59,6 +60,20 @@ public class ReservationsEndpointsTests
             Content = new StringContent(payload, Encoding.UTF8, "application/json"),
             Headers = { { "Stripe-Signature", signature } }
         };
+
+    // A ticket bought and paid for a new screening of seatCount seats: its screening and its code
+    private async Task<(Guid ScreeningId, string TicketCode)> PaidTicketAsync(int seatCount, DateTime startsAt)
+    {
+        var screeningId = await ScreeningWithSeatsAsync(seatCount, startsAt);
+        using var customer = await SignedInCustomerAsync();
+        var created = await customer.PostAsJsonAsync("/api/reservations", new { screeningId, seatCount });
+        created.EnsureSuccessStatusCode();
+        var reservationId = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("reservationId").GetString()!;
+        using var stripe = _api.CreateVisitorClient();
+        (await stripe.SendAsync(StripeNotification(reservationId, FakePaymentGateway.ValidSignature))).EnsureSuccessStatusCode();
+        var ticket = await customer.GetFromJsonAsync<JsonElement>($"{created.Headers.Location}/ticket");
+        return (screeningId, ticket.GetProperty("ticketCode").GetString()!);
+    }
 
     [Fact]
     [Trait("US", "2.3")]
@@ -391,5 +406,96 @@ public class ReservationsEndpointsTests
         ticket.GetProperty("startsAt").GetString().ShouldBe("2032-06-03T20:30:00");
         ticket.GetProperty("seatCount").GetInt32().ShouldBe(2);
         ticket.GetProperty("screeningCancelled").GetBoolean().ShouldBeFalse();
+    }
+
+    [Fact]
+    [Trait("US", "4.1")]
+    [Trait("Category", "Integration")]
+    public async Task When_the_inspector_scans_a_valid_ticket_Then_access_is_granted_and_a_second_scan_is_refused()
+    {
+        // Arrange: a ticket of 2 seats, paid
+        var (screeningId, ticketCode) = await PaidTicketAsync(2, new DateTime(2032, 6, 10, 20, 30, 0, DateTimeKind.Unspecified));
+        using var inspector = await _api.CreateClientWithRoleAsync(UserRole.TicketInspector);
+
+        // Act
+        var first = await inspector.PostAsJsonAsync("/api/ticket-checks", new { screeningId, ticketCode });
+        var second = await inspector.PostAsJsonAsync("/api/ticket-checks", new { screeningId, ticketCode });
+
+        // Assert: criterion 1, what the inspector sees; criterion 2, the explicit refusal
+        first.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var check = await first.Content.ReadFromJsonAsync<JsonElement>();
+        check.GetProperty("movieTitle").GetString().ShouldBe("Reservations contract");
+        check.GetProperty("startsAt").GetString().ShouldBe("2032-06-10T20:30:00");
+        check.GetProperty("roomName").GetString().ShouldStartWith("Room ");
+        check.GetProperty("seats").EnumerateArray().Select(seat => seat.GetString()).ShouldBe(new[] { "A1", "A2" });
+        second.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await second.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("type").GetString().ShouldBe("/errors/ticket-already-used");
+    }
+
+    [Fact]
+    [Trait("US", "4.1")]
+    [Trait("Category", "Integration")]
+    public async Task When_the_inspector_scans_a_ticket_of_another_screening_or_an_unknown_code_Then_access_is_refused()
+    {
+        // Arrange: a ticket for 20:30; the inspector controls the 22:45 screening
+        var (_, ticketCode) = await PaidTicketAsync(1, new DateTime(2032, 6, 11, 20, 30, 0, DateTimeKind.Unspecified));
+        var otherScreeningId = await ScreeningWithSeatsAsync(1, new DateTime(2032, 6, 11, 22, 45, 0, DateTimeKind.Unspecified));
+        using var inspector = await _api.CreateClientWithRoleAsync(UserRole.TicketInspector);
+
+        // Act
+        var wrongScreening = await inspector.PostAsJsonAsync("/api/ticket-checks", new { screeningId = otherScreeningId, ticketCode });
+        var unknown = await inspector.PostAsJsonAsync("/api/ticket-checks", new { screeningId = otherScreeningId, ticketCode = Reservation.NewTicketCode() });
+        var notATicket = await inspector.PostAsJsonAsync("/api/ticket-checks", new { screeningId = otherScreeningId, ticketCode = "https://example.com" });
+
+        // Assert: criterion 3, one explicit refusal per case
+        async Task<string?> TypeOf(HttpResponseMessage response) =>
+            (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("type").GetString();
+        wrongScreening.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await TypeOf(wrongScreening)).ShouldBe("/errors/ticket-for-another-screening");
+        unknown.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await TypeOf(unknown)).ShouldBe("/errors/ticket-not-found");
+        notATicket.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await TypeOf(notATicket)).ShouldBe("/errors/ticket-not-found");
+    }
+
+    [Fact]
+    [Trait("US", "4.1")]
+    [Trait("Category", "Integration")]
+    public async Task When_the_inspector_opens_the_controls_Then_the_screenings_of_the_day_are_listed()
+    {
+        // Arrange: two screenings that day, the later one created first
+        var late = await ScreeningWithSeatsAsync(1, new DateTime(2032, 6, 12, 22, 45, 0, DateTimeKind.Unspecified));
+        var early = await ScreeningWithSeatsAsync(1, new DateTime(2032, 6, 12, 14, 0, 0, DateTimeKind.Unspecified));
+        using var inspector = await _api.CreateClientWithRoleAsync(UserRole.TicketInspector);
+
+        // Act
+        var response = await inspector.GetAsync("/api/ticket-checks/screenings?date=2032-06-12");
+
+        // Assert: by time, with what the inspector needs to recognise his door
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var screenings = (await response.Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray().ToList();
+        screenings.Select(s => s.GetProperty("screeningId").GetGuid()).ShouldBe(new[] { early, late });
+        screenings[0].GetProperty("movieTitle").GetString().ShouldBe("Reservations contract");
+        screenings[0].GetProperty("startsAt").GetString().ShouldBe("2032-06-12T14:00:00");
+        screenings[0].GetProperty("roomName").GetString().ShouldStartWith("Room ");
+    }
+
+    [Theory]
+    [Trait("US", "4.1")]
+    [Trait("Category", "Integration")]
+    [InlineData(UserRole.Customer)]
+    [InlineData(UserRole.Cashier)]
+    [InlineData(UserRole.Manager)]
+    public async Task When_another_role_checks_a_ticket_Then_403(UserRole role)
+    {
+        // Arrange
+        var (screeningId, ticketCode) = await PaidTicketAsync(1, new DateTime(2032, 6, 13, 20, 30, 0, DateTimeKind.Unspecified).AddMinutes((int)role));
+        using var client = await _api.CreateClientWithRoleAsync(role);
+
+        // Act
+        var response = await client.PostAsJsonAsync("/api/ticket-checks", new { screeningId, ticketCode });
+
+        // Assert: only the inspector lets people in (Bloc 1)
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
 }
