@@ -58,4 +58,10 @@ public sealed class TicketQueries : ITicketQueries
             })
             .ToListAsync(cancellationToken);
     }
+
+    public Task<TicketCheckDto?> GetCheckedTicketAsync(string ticketCode, CancellationToken cancellationToken = default) =>
+        throw new NotImplementedException();
+
+    public Task<IReadOnlyList<TicketCheckScreeningDto>> GetScreeningsOfDayAsync(DateOnly date, CancellationToken cancellationToken = default) =>
+        throw new NotImplementedException();
 }

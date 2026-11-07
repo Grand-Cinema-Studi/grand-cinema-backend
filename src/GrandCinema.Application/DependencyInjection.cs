@@ -43,6 +43,8 @@ public static class DependencyInjection
         services.AddScoped<IQueryHandler<GetReservationTrackingQuery, ReservationTrackingDto>, GetReservationTrackingHandler>();
         services.AddScoped<IQueryHandler<GetTicketQuery, Result<TicketDto>>, GetTicketHandler>();
         services.AddScoped<IQueryHandler<GetMyTicketsQuery, IReadOnlyList<TicketSummaryDto>>, GetMyTicketsHandler>();
+        services.AddScoped<ICommandHandler<CheckTicketCommand, Result<TicketCheckDto>>, CheckTicketHandler>();
+        services.AddScoped<IQueryHandler<GetTicketCheckScreeningsQuery, IReadOnlyList<TicketCheckScreeningDto>>, GetTicketCheckScreeningsHandler>();
 
         return services;
     }
