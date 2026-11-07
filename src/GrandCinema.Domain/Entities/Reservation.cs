@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 using GrandCinema.Domain.Enums;
 
 namespace GrandCinema.Domain.Entities;
@@ -62,5 +63,5 @@ public class Reservation
     public static string NewTicketCode() => Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
 
     /// <summary>What a QR code of the cinema contains (NewTicketCode), and nothing else.</summary>
-    public static bool IsTicketCode(string? text) => throw new NotImplementedException();
+    public static bool IsTicketCode(string? text) => text is not null && Regex.IsMatch(text, "^[0-9a-f]{32}$", RegexOptions.None, TimeSpan.FromMilliseconds(100));
 }
