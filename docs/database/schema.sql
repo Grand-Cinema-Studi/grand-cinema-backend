@@ -169,3 +169,11 @@ VALUES ('20261106183000_AddTicketCode', '10.0.12');
 
 COMMIT;
 
+START TRANSACTION;
+ALTER TABLE "Reservations" ADD "TicketUsedAt" timestamp with time zone;
+
+INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+VALUES ('20261107073746_AddTicketUsedAt', '10.0.12');
+
+COMMIT;
+

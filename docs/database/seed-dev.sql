@@ -360,12 +360,15 @@ ON CONFLICT ("Id") DO NOTHING;
 -- Demo accounts (US 2.1). Passwords, for the demonstration only:
 --   manager@grand-cinema.test  /  Manager-Demo-2026!   (role Manager)
 --   client@grand-cinema.test   /  Client-Demo-2026!    (role Customer)
+--   cashier@grand-cinema.test   /  Cashier-Demo-2026!    (role Cashier)
+--   inspector@grand-cinema.test   /  Inspector-Demo-2026!    (role TicketInspector)
 -- Hashes produced by ASP.NET Core Identity's PasswordHasher format (v3: PBKDF2, HMAC-SHA512, 100,000 iterations, random salt).
 INSERT INTO "Users" ("Id", "Email", "PasswordHash", "FirstName", "LastName", "CreatedAt", "Role")
 VALUES
     ('44444444-4444-4444-4444-444444444441', 'manager@grand-cinema.test', 'AQAAAAIAAYagAAAAELa1KX2ovC0OtXLAcj0RNezw1+z35bTvMdcWWzGbf/KDMxe0tQ29/GimwyPWa8hBUg==', 'Paul', 'Durand', NOW(), 'Manager'),
     ('44444444-4444-4444-4444-444444444442', 'client@grand-cinema.test', 'AQAAAAIAAYagAAAAEDpvNboqLNY/zxtSnOafj8FM0tN85JSIlBLpiTysMTkLBR5C2l5qqyxQ9HeESAhqoQ==', 'Léa', 'Martin', NOW(), 'Customer'),
-    ('44444444-4444-4444-4444-444444444443', 'cashier@grand-cinema.test', 'AQAAAAIAAYagAAAAEK3FzYCtkE1xsMi0Oh/DIyu2jxOuxwBcCv3LJHsnD7cQWW18qStW97X5bwWK1Q5New==', 'Hugo', 'Petit', NOW(), 'Cashier')
+    ('44444444-4444-4444-4444-444444444443', 'cashier@grand-cinema.test', 'AQAAAAIAAYagAAAAEK3FzYCtkE1xsMi0Oh/DIyu2jxOuxwBcCv3LJHsnD7cQWW18qStW97X5bwWK1Q5New==', 'Hugo', 'Petit', NOW(), 'Cashier'),
+    ('44444444-4444-4444-4444-444444444444', 'inspector@grand-cinema.test', 'AQAAAAIAAYagAAAAEFyRk62SQHmmnzqKWYaN9D8IPQ3TN1fs2Go65SUuXuKGopVeR/cMfrktPSk9CCPpbA==', 'Inès', 'Moreau', NOW(), 'TicketInspector')
 ON CONFLICT DO NOTHING;
 
 -- Seats of each demo room (US 2.2, 2.3): rows of 10 seats, named A to Z, then AA, AB…, as many as the capacity.
