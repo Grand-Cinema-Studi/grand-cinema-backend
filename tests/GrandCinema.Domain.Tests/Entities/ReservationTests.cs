@@ -58,4 +58,17 @@ public class ReservationTests
         codes.ShouldAllBe(code => System.Text.RegularExpressions.Regex.IsMatch(code, "^[0-9a-f]{32}$"));
         codes.Distinct().Count().ShouldBe(1000);
     }
+
+    [Fact]
+    [Trait("US", "4.1")]
+    public void When_a_text_is_read_Then_only_32_hexadecimal_characters_make_a_ticket_code()
+    {
+        // Assert: what a QR code of the cinema contains, and what it never does
+        Reservation.IsTicketCode(Reservation.NewTicketCode()).ShouldBeTrue();
+        Reservation.IsTicketCode("0123456789ABCDEF0123456789ABCDEF").ShouldBeFalse();
+        Reservation.IsTicketCode("0123456789abcdef").ShouldBeFalse();
+        Reservation.IsTicketCode("https://example.com/0123456789abcdef0123456789abcdef").ShouldBeFalse();
+        Reservation.IsTicketCode("").ShouldBeFalse();
+        Reservation.IsTicketCode(null).ShouldBeFalse();
+    }
 }

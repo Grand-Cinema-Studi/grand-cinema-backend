@@ -96,6 +96,9 @@ namespace GrandCinema.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<DateTime?>("TicketUsedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<decimal>("TotalAmount")
                         .HasPrecision(10, 2)
                         .HasColumnType("numeric(10,2)");

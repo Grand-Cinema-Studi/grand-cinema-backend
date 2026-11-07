@@ -375,4 +375,65 @@ public class ReservationRepositoryTests : IClassFixture<PostgreSqlFixture>
         CodeOf(hold).ShouldBe(drawn);
         CodeOf(freed).ShouldBeNull();
     }
+
+    [Fact]
+    [Trait("US", "4.1")]
+    [Trait("Category", "Integration")]
+    public async Task When_a_ticket_is_scanned_Then_it_is_used_once_and_each_refusal_says_why()
+    {
+        // Arrange: a paid ticket of the 20:30 screening, and the 22:45 screening of the same room
+        var (screening, seats) = await ScreeningWithSeatsAsync(("A", 1));
+        var (otherScreening, _) = await ScreeningWithSeatsAsync(("A", 1));
+        var reservationId = await ReservationAsync(screening, ReservationStatus.PendingPayment, Now.AddMinutes(5), seats["A1"]);
+        await using (var pay = _database.CreateDbContext())
+        {
+            await new ReservationRepository(pay).ConfirmPaymentAsync(reservationId, "pi_paid", Now);
+        }
+        await using var readDb = _database.CreateDbContext();
+        var code = (await readDb.Reservations.SingleAsync(r => r.Id == reservationId)).TicketCode!;
+        await using var db = _database.CreateDbContext();
+        var repository = new ReservationRepository(db);
+
+        // Act: at the wrong door, at the right one, a second time, and a code that does not exist
+        var atOtherDoor = await repository.UseTicketAsync(code, otherScreening.Id, Now.AddHours(4));
+        var atItsDoor = await repository.UseTicketAsync(code, screening.Id, Now.AddHours(4));
+        var again = await repository.UseTicketAsync(code, screening.Id, Now.AddHours(4).AddMinutes(1));
+        var unknown = await repository.UseTicketAsync(Reservation.NewTicketCode(), screening.Id, Now.AddHours(4));
+
+        // Assert: criteria 1, 2 and 3; the time of the passage is recorded once
+        atOtherDoor.ShouldBe(TicketUse.OtherScreening);
+        atItsDoor.ShouldBe(TicketUse.Accepted);
+        again.ShouldBe(TicketUse.AlreadyUsed);
+        unknown.ShouldBe(TicketUse.NotFound);
+        await using var checkDb = _database.CreateDbContext();
+        (await checkDb.Reservations.SingleAsync(r => r.Id == reservationId)).TicketUsedAt.ShouldBe(Now.AddHours(4));
+    }
+
+    [Fact]
+    [Trait("US", "4.1")]
+    [Trait("Category", "Integration")]
+    public async Task When_two_inspectors_scan_the_same_ticket_at_once_Then_only_one_lets_it_in()
+    {
+        // Arrange: a paid ticket
+        var (screening, seats) = await ScreeningWithSeatsAsync(("A", 1));
+        var reservationId = await ReservationAsync(screening, ReservationStatus.PendingPayment, Now.AddMinutes(5), seats["A1"]);
+        await using (var pay = _database.CreateDbContext())
+        {
+            await new ReservationRepository(pay).ConfirmPaymentAsync(reservationId, "pi_paid", Now);
+        }
+        await using var readDb = _database.CreateDbContext();
+        var code = (await readDb.Reservations.SingleAsync(r => r.Id == reservationId)).TicketCode!;
+
+        // Act: two scans at the same instant, each with its own connection, as two phones at two doors
+        async Task<TicketUse> ScanAsync()
+        {
+            await using var db = _database.CreateDbContext();
+            return await new ReservationRepository(db).UseTicketAsync(code, screening.Id, Now.AddHours(4));
+        }
+        var uses = await Task.WhenAll(ScanAsync(), ScanAsync());
+
+        // Assert: the ticket lets one person in, never two
+        uses.Count(use => use == TicketUse.Accepted).ShouldBe(1);
+        uses.Count(use => use == TicketUse.AlreadyUsed).ShouldBe(1);
+    }
 }

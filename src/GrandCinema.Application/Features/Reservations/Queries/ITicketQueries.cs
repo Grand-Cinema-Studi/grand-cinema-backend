@@ -10,4 +10,10 @@ public interface ITicketQueries
 
     // The paid reservations of this account, the latest screening first, cancelled screenings included
     Task<IReadOnlyList<TicketSummaryDto>> GetTicketsOfUserAsync(Guid userId, CancellationToken cancellationToken = default);
+
+    // What the inspector sees once the ticket of this code has let its holders in
+    Task<TicketCheckDto?> GetCheckedTicketAsync(string ticketCode, CancellationToken cancellationToken = default);
+
+    // The screenings of a day, started ones included, cancelled ones excluded, by time then room
+    Task<IReadOnlyList<TicketCheckScreeningDto>> GetScreeningsOfDayAsync(DateOnly date, CancellationToken cancellationToken = default);
 }

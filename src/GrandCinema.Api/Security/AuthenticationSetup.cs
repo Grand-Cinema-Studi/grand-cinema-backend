@@ -12,6 +12,7 @@ internal static class AuthenticationSetup
     public const string AuthenticationRateLimitingPolicy = "authentication";
     public const string ManagerPolicy = "manager";
     public const string ReservationTrackingPolicy = "reservation-tracking";
+    public const string TicketInspectionPolicy = "ticket-inspection";
 
     public static IServiceCollection AddJwtAuthentication(this IServiceCollection services)
     {
@@ -41,7 +42,9 @@ internal static class AuthenticationSetup
         services.AddAuthorizationBuilder()
             .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build())
             .AddPolicy(ManagerPolicy, policy => policy.RequireRole(nameof(UserRole.Manager)))
-            .AddPolicy(ReservationTrackingPolicy, policy => policy.RequireRole(nameof(UserRole.Manager), nameof(UserRole.Cashier)));
+            .AddPolicy(ReservationTrackingPolicy, policy => policy.RequireRole(nameof(UserRole.Manager), nameof(UserRole.Cashier)))
+            .AddPolicy(TicketInspectionPolicy, policy => policy.RequireRole(nameof(UserRole.TicketInspector)));
+
 
         return services;
     }

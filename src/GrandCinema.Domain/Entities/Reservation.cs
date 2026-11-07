@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 using GrandCinema.Domain.Enums;
 
 namespace GrandCinema.Domain.Entities;
@@ -26,6 +27,8 @@ public class Reservation
     public string? TermsOfSaleVersion { get; set; }
     // The code of the ticket, shown as a QR code and checked. null until paid
     public string? TicketCode { get; set; }
+    // When the ticket is checked.
+    public DateTime? TicketUsedAt { get; set; }
     public ICollection<ReservedSeat> ReservedSeats { get; set; } = new List<ReservedSeat>();
     public Screening Screening { get; set; } = null!;
 
@@ -58,4 +61,7 @@ public class Reservation
 
     /// <summary>A code that cannot be guessed, drawn when the payment is confirmed.</summary>
     public static string NewTicketCode() => Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
+
+    /// <summary>What a QR code of the cinema contains (NewTicketCode), and nothing else.</summary>
+    public static bool IsTicketCode(string? text) => text is not null && Regex.IsMatch(text, "^[0-9a-f]{32}$", RegexOptions.None, TimeSpan.FromMilliseconds(100));
 }

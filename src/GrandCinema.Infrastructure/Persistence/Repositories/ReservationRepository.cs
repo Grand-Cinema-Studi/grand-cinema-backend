@@ -172,4 +172,32 @@ public sealed class ReservationRepository : IReservationRepository
             ? PaymentConfirmation.AlreadyConfirmed
             : PaymentConfirmation.Rejected;
     }
+
+    public async Task<TicketUse> UseTicketAsync(string ticketCode, Guid screeningId, DateTime nowUtc, CancellationToken cancellationToken = default)
+    {
+        // One statement: PostgreSQL locks the row, so of two scans at the same instant, the second finds it used
+        var letIn = await _db.Reservations
+            .Where(r => r.TicketCode == ticketCode
+                && r.ScreeningId == screeningId
+                && r.Status == ReservationStatus.Confirmed
+                && r.TicketUsedAt == null)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(r => r.TicketUsedAt, nowUtc), cancellationToken);
+        if (letIn == 1)
+        {
+            return TicketUse.Accepted;
+        }
+
+        // Refused: read the ticket only to say why
+        var ticket = await _db.Reservations
+            .AsNoTracking()
+            .Where(r => r.TicketCode == ticketCode && r.Status == ReservationStatus.Confirmed)
+            .Select(r => new { r.ScreeningId })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (ticket is null)
+        {
+            return TicketUse.NotFound;
+        }
+
+        return ticket.ScreeningId == screeningId ? TicketUse.AlreadyUsed : TicketUse.OtherScreening;
+    }
 }

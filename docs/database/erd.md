@@ -65,6 +65,7 @@ erDiagram
         timestamptz TermsOfSaleAcceptedAt "UTC, nullable"
         varchar TermsOfSaleVersion "20, nullable"
         varchar TicketCode UK "32, nullable : code du billet (US 3.2)"
+        timestamptz TicketUsedAt "UTC, nullable : billet passé à l'entrée (US 4.1)"
     }
     ReservedSeats {
         uuid ReservationId PK, FK
