@@ -1,12 +1,16 @@
+using Amazon;
+using Amazon.S3;
 using GrandCinema.Application.Abstractions.Payments;
 using GrandCinema.Application.Abstractions.Persistence;
 using GrandCinema.Application.Abstractions.Security;
+using GrandCinema.Application.Abstractions.Storage;
 using GrandCinema.Application.Features.Reservations.Queries;
 using GrandCinema.Infrastructure.Payments;
 using GrandCinema.Infrastructure.Persistence;
 using GrandCinema.Infrastructure.Persistence.Queries;
 using GrandCinema.Infrastructure.Persistence.Repositories;
 using GrandCinema.Infrastructure.Security;
+using GrandCinema.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -44,6 +48,17 @@ public static class DependencyInjection
         services.AddSingleton<IPaymentGateway, StripePaymentGateway>();
 
         services.AddScoped<IProgrammingRepository, ProgrammingRepository>();
+        // Read on first use, as StripeOptions: the API tests replace the storage and need neither S3 nor a folder
+        services.AddSingleton(_ => PostersOptions.FromConfiguration(configuration));
+        services.AddSingleton<IAmazonS3>(provider =>
+            new AmazonS3Client(RegionEndpoint.GetBySystemName(provider.GetRequiredService<PostersOptions>().Region)));
+        services.AddSingleton<IPosterStorage>(provider =>
+        {
+            var options = provider.GetRequiredService<PostersOptions>();
+            return options.Storage == PostersOptions.Local
+                ? new LocalPosterStorage(options)
+                : new S3PosterStorage(provider.GetRequiredService<IAmazonS3>(), options);
+        });
 
         return services;
     }

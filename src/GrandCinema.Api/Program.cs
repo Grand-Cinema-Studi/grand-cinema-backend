@@ -8,7 +8,9 @@ using GrandCinema.Api.OpenApi;
 using GrandCinema.Api.Security;
 using GrandCinema.Application;
 using GrandCinema.Infrastructure;
+using GrandCinema.Infrastructure.Storage;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Extensions.FileProviders;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -46,6 +48,13 @@ app.UseForwardedHeaders();
 // Unexpected errors: generic Problem Details response (500), without any stack trace; the details go to the logs.
 app.UseExceptionHandler();
 app.UseStatusCodePages();
+
+var posters = app.Environment.IsDevelopment() ? app.Services.GetRequiredService<PostersOptions>() : null;
+if (posters?.Storage == PostersOptions.Local)
+{
+    Directory.CreateDirectory(posters.LocalFolder);
+    app.UseStaticFiles(new StaticFileOptions { FileProvider = new PhysicalFileProvider(posters.LocalFolder), RequestPath = "/posters" });
+}
 
 if (app.Configuration.GetValue<bool>("Swagger:Enabled"))
 {

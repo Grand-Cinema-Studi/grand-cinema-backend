@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using GrandCinema.Application.Abstractions.Payments;
 using GrandCinema.Application.Abstractions.Security;
+using GrandCinema.Application.Abstractions.Storage;
 using GrandCinema.Domain.Entities;
 using GrandCinema.Domain.Enums;
 using GrandCinema.Infrastructure.Persistence;
@@ -33,8 +34,12 @@ public sealed class GrandCinemaApiFactory : WebApplicationFactory<Program>, IAsy
         builder.UseSetting("Jwt:SigningKey", "signing-key-of-the-api-tests-only-0123456789");
         // As on the acceptance environment, where the trainers use Swagger.
         builder.UseSetting("Swagger:Enabled", "true");
-        // Stripe is replaced: the API tests need neither the network nor a Stripe account (last registration wins)
-        builder.ConfigureTestServices(services => services.AddSingleton<IPaymentGateway, FakePaymentGateway>());
+        // Stripe and S3 are replaced: the API tests need neither the network nor an account (last registration wins)
+        builder.ConfigureTestServices(services =>
+        {
+            services.AddSingleton<IPaymentGateway, FakePaymentGateway>();
+            services.AddSingleton<IPosterStorage, FakePosterStorage>();
+        });
     }
 
     public GrandCinemaDbContext CreateDbContext() =>

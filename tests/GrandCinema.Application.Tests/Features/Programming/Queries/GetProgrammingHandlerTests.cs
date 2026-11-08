@@ -1,4 +1,5 @@
 using GrandCinema.Application.Abstractions.Persistence;
+using GrandCinema.Application.Features.Programming;
 using GrandCinema.Application.Features.Programming.Queries;
 using GrandCinema.Domain.Entities;
 using Microsoft.Extensions.Time.Testing;
@@ -51,5 +52,29 @@ public class GetProgrammingHandlerTests
         result.Screenings[0].TakenSeats.ShouldBe(0);
         result.Movies.Select(m => (m.Title, m.DurationMinutes)).ShouldBe(new[] { ("Bird", 161), ("Metropolis", 153) });
         result.Rooms.Select(r => (r.Name, r.Capacity)).ShouldBe(new[] { ("Salle 1", 170), ("Salle 2", 300) });
+    }
+
+    [Fact]
+    [Trait("US", "5.6")]
+    public async Task When_the_manager_opens_a_day_Then_the_genres_to_choose_from_are_offered()
+    {
+        // Arrange: an empty day, an empty catalog
+        var day = new DateOnly(2026, 7, 18);
+        _screenings.Setup(r => r.GetScreeningsAsync(day, It.IsAny<CancellationToken>())).ReturnsAsync(new List<Screening>());
+        _screenings
+            .Setup(r => r.CountTakenSeatsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, int>());
+        _programming.Setup(p => p.GetMoviesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new List<Movie>());
+        _programming.Setup(p => p.GetRoomsAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new List<Room>());
+        var handler = new GetProgrammingHandler(_programming.Object, _screenings.Object, _time);
+
+        // Act
+        var result = await handler.Handle(new GetProgrammingQuery(day));
+
+        // Assert: the whole list, in alphabetical order, the genres of the demonstration catalog included
+        result.Genres.ShouldBe(MovieGenres.All);
+        result.Genres.Count.ShouldBe(17);
+        result.Genres.ShouldContain("Comédie musicale");
+        result.Genres.ShouldBeInOrder(SortDirection.Ascending, StringComparer.Ordinal);
     }
 }

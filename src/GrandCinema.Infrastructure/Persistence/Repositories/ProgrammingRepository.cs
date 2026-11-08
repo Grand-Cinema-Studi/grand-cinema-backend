@@ -18,6 +18,19 @@ public sealed class ProgrammingRepository : IProgrammingRepository
     public async Task<IReadOnlyList<Movie>> GetMoviesAsync(CancellationToken cancellationToken = default) =>
         await _db.Movies.AsNoTracking().OrderBy(m => m.Title).ToListAsync(cancellationToken);
 
+    public async Task<bool> MovieExistsAsync(string title, DateOnly releaseDate, CancellationToken cancellationToken = default)
+    {
+        // upper() on both sides, run by PostgreSQL: the case of the title is ignored
+        var normalized = title.ToUpperInvariant();
+        return await _db.Movies.AnyAsync(m => m.ReleaseDate == releaseDate && m.Title.ToUpper() == normalized, cancellationToken);
+    }
+
+    public async Task AddMovieAsync(Movie movie, CancellationToken cancellationToken = default)
+    {
+        _db.Movies.Add(movie);
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<Room>> GetRoomsAsync(CancellationToken cancellationToken = default) =>
         await _db.Rooms.AsNoTracking().OrderBy(r => r.Name).ToListAsync(cancellationToken);
     public async Task<Room?> GetRoomAsync(Guid roomId, CancellationToken cancellationToken = default) =>
