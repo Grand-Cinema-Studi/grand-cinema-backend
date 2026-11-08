@@ -158,6 +158,8 @@ Le script charge `docs/database/seed-dev.sql` : 10 salles (1 700 places), 125 fi
 
 Les affiches, dates de sortie et durées viennent de [TMDB](https://www.themoviedb.org) : avec `TMDB_TOKEN=<jeton>` dans le `.env` (jeton « API Read Access Token » ou clé d'API d'un compte TMDB), `node --env-file=.env scripts/fetch-tmdb-posters.mjs` (Node 20.6 ou plus) écrit `docs/database/seed-posters.sql`, appliqué ensuite par le script de remise à zéro. Ce produit utilise l'API TMDB mais n'est ni approuvé ni certifié par TMDB.
 
+Sur la recette, les données de démonstration se remettent à zéro avec `deploy/reset-demo-data.sh` (`sudo bash reset-demo-data.sh` sur le serveur, voir le bug 0002 du dépôt de documentation) : jamais en rechargeant `seed-dev.sql` seul, ce qui ajouterait un second programme décalé au premier (deux films dans une salle au même moment).
+
 ### 5. Lancer l'API
 
 ```bash
