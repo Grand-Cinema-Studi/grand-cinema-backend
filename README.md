@@ -20,6 +20,7 @@ Projet réalisé dans le cadre du Bachelor Développeur d'Application (Studi), B
 | Base de données | PostgreSQL 16 (Docker en local), EF Core 10 et migrations |
 | Authentification | Jeton JWT (`Authorization: Bearer`), mots de passe hachés par PBKDF2 (`PasswordHasher` d'ASP.NET Core), voir l'[ADR 0002](https://github.com/Grand-Cinema-Studi/grand-cinema-docs/blob/main/adr/0002-authentication-jwt.md) |
 | Documentation de l'API | OpenAPI (généré par ASP.NET Core) et Swagger UI |
+| Affiches des films | Fichier envoyé par le responsable (US 5.6), reconnu à ses premiers octets (JPEG, PNG, WebP, 2 Mo au plus) ; sur la recette, bucket S3 privé servi par CloudFront sous `/posters/*` (`AWSSDK.S3`, droits du rôle de l'instance EC2, aucune clé) ; en local, dossier `posters-dev/` servi par l'API |
 | Paiement | Stripe Checkout en mode test (`Stripe.net`) : la carte est saisie sur la page de Stripe, jamais sur la nôtre ; la réservation n'est confirmée que par la notification signée de Stripe (webhook) |
 | Tests | xUnit, Moq, Shouldly, `FakeTimeProvider`, Testcontainers (PostgreSQL), Coverlet |
 
@@ -29,7 +30,7 @@ Projet réalisé dans le cadre du Bachelor Développeur d'Application (Studi), B
 src/
 ├── GrandCinema.Domain           entités et énumérations, sans aucune dépendance
 ├── GrandCinema.Application      cas d'usage (handlers CQRS), DTO, interfaces des repositories
-├── GrandCinema.Infrastructure   EF Core, PostgreSQL, migrations, implémentation des repositories
+├── GrandCinema.Infrastructure   EF Core, PostgreSQL, migrations, implémentation des repositories, stockage des affiches (S3 ou dossier local)
 └── GrandCinema.Api              endpoints HTTP, injection de dépendances, Swagger
 tests/
 ├── GrandCinema.Domain.Tests
@@ -55,6 +56,7 @@ La couche Application est rangée par fonctionnalité (`Features/<Fonctionnalit�
 | US 4.1 | Scanner un billet | Fait côté API : le contrôleur choisit une séance du jour (`GET /api/ticket-checks/screenings`) ; `POST /api/ticket-checks` vérifie le billet et le marque utilisé en une seule instruction SQL : un billet ne laisse entrer qu'une fois, même scanné à deux portes au même instant ; refus explicites (déjà utilisé, autre séance, code inconnu ou illisible) ; compte contrôleur de démonstration |
 | US 5.1 | Consulter les réservations au guichet | Fait côté API : `GET /api/reservation-tracking` ouvert au caissier (`Cashier`), en lecture seule ; aucun endpoint d'écriture ni la programmation (`403`) ; compte caissier de démonstration |
 | US 5.2 | Gérer la programmation | Fait (API et front) : `GET /api/programming`, `POST /api/programming/screenings`, `PUT` et `DELETE /api/programming/screenings/{id}`, réservés au responsable (`Manager`) ; avertissement quand des places sont prises, salle libre nettoyage compris, séance annulée cachée partout mais gardée |
+| US 5.6 | Ajouter un film au catalogue | En cours. Fait côté API : `POST /api/programming/movies` (responsable seulement) : titre, synopsis, durée, genre choisi dans une liste de 17, date de sortie et affiche ; affiche contrôlée à ses premiers octets, rangée sous un nom aléatoire ; `409 movie-already-exists` pour un même titre et une même date de sortie ; le film est aussitôt proposé à la programmation, et public à sa première séance. À venir : modifier un film, et l'écran du front |
 | US 5.3 | Suivre les réservations | Fait (API et front) : `GET /api/reservation-tracking`, réservé au personnel (responsable, et caissier depuis l'US 5.1) : par séance d'un jour, places vendues en ligne et au guichet, bloquées, capacité et places restantes ; lecture par projection SQL (ADR 0004) |
 
 Les user stories, leurs critères d'acceptation, la Definition of Ready et la Definition of Done sont dans le [dépôt de documentation](https://github.com/Grand-Cinema-Studi/grand-cinema-docs) et sur le [Project GitHub](https://github.com/orgs/Grand-Cinema-Studi/projects/3).
@@ -78,7 +80,8 @@ Les user stories, leurs critères d'acceptation, la Definition of Ready et la De
 | `GET` | `/api/users/me/tickets` | Les billets de l'utilisateur connecté (US 3.2) : ses réservations payées, la séance la plus tardive d'abord ; une séance annulée après le paiement est signalée (`screeningCancelled`) |
 | `POST` | `/api/reservations/{id}/payment` | Page de paiement Stripe d'un blocage de l'utilisateur connecté (`200`, `checkoutUrl`) ; `acceptTermsOfSale: true` obligatoire (sinon `400`), date et version des conditions générales de vente enregistrées ; `409 hold-expired` après les 10 minutes ou une annulation, `409 reservation-paid` si elle est déjà payée |
 | `POST` | `/api/payments/stripe-webhook` | Notification de Stripe, sans jeton : signature (`Stripe-Signature`) vérifiée avant tout, `400` sinon ; un paiement abouti confirme la réservation une seule fois ; un paiement arrivé après la libération des places, ou un second paiement, est remboursé |
-| `GET` | `/api/programming?date=AAAA-MM-JJ` | Responsable seulement : toutes les séances du jour (commencées comprises) avec places prises et capacité, le catalogue des films et les salles |
+| `GET` | `/api/programming?date=AAAA-MM-JJ` | Responsable seulement : toutes les séances du jour (commencées comprises) avec places prises et capacité, le catalogue des films, les salles et la liste des genres (`genres`, US 5.6) |
+| `POST` | `/api/programming/movies` | Responsable seulement (US 5.6) : ajout d'un film en `multipart/form-data` : `title`, `synopsis`, `durationMinutes` (1 à 600), `genre` (un de `genres`), `releaseDate` (`AAAA-MM-JJ`) et le fichier `poster` (JPEG, PNG ou WebP, 2 Mo au plus, reconnu à ses premiers octets : le nom et le type annoncés par le navigateur sont ignorés) ; `201` et `movieId` ; `400` par champ ; `409 movie-already-exists` (même titre, casse ignorée, et même date de sortie) |
 | `POST` | `/api/programming/screenings` | Responsable seulement : création d'une séance (film, salle, heure locale du cinéma sans fuseau, prix) (`201`) ; `400` pour une heure passée, avec fuseau, ou un prix nul ; `409 room-not-available` si la salle est occupée à ce moment, nettoyage de 15 minutes compris |
 | `PUT` | `/api/programming/screenings/{id}` | Responsable seulement : nouvelle date, heure ou prix (`204`) ; ni la salle ni le film ne changent ; `409 screening-started`, `409 room-not-available` ; `409 screening-has-reservations` tant que des places sont prises et que la demande n'est pas renvoyée avec `?confirmed=true` |
 | `DELETE` | `/api/programming/screenings/{id}` | Responsable seulement : annulation (`204`) ; la séance disparaît de toutes les lectures, ses blocages sont annulés, ses ventes gardées ; même avertissement que la modification |
@@ -88,7 +91,7 @@ Les user stories, leurs critères d'acceptation, la Definition of Ready et la De
 | `GET` | `/health` | État de l'application (`Healthy`) |
 | `GET` | `/` | Nom de l'API |
 
-Tout endpoint est réservé aux utilisateurs connectés, sauf ceux déclarés publics (programmation, films à l'affiche, films à la une, fiche d'un film, inscription, connexion, notification de Stripe, protégée par sa signature, `/health`). Une route inconnue répond donc `401` à un visiteur sans jeton, et non `404`. La programmation (`/api/programming…`) est en plus réservée au rôle `Manager` : `403` pour tout autre rôle. Dans Swagger, le bouton **Authorize** reçoit le jeton renvoyé par `POST /api/tokens`.
+Tout endpoint est réservé aux utilisateurs connectés, sauf ceux déclarés publics (programmation, films à l'affiche, films à la une, fiche d'un film, inscription, connexion, notification de Stripe, protégée par sa signature, `/health`). Les affiches (`/posters/…`) ne passent pas par l'API sur la recette : CloudFront les lit dans un bucket S3 que personne d'autre ne peut lire. Une route inconnue répond donc `401` à un visiteur sans jeton, et non `404`. La programmation (`/api/programming…`) est en plus réservée au rôle `Manager` : `403` pour tout autre rôle. Dans Swagger, le bouton **Authorize** reçoit le jeton renvoyé par `POST /api/tokens`.
 
 En développement, la documentation interactive est sur `/swagger` et le document OpenAPI sur `/openapi/v1.json`. Swagger est désactivé par défaut et s'active par configuration (`Swagger:Enabled`, ou la variable d'environnement `Swagger__Enabled=true`).
 
@@ -171,6 +174,8 @@ Pour payer en local, dans un autre terminal, la Stripe CLI relaie à l'API les n
 stripe listen --events checkout.session.completed --forward-to http://localhost:5073/api/payments/stripe-webhook
 ```
 
+Les affiches envoyées en local (`POST /api/programming/movies`, US 5.6) sont écrites dans le dossier `posters-dev/` (ignoré par Git) et servies par l'API sous `/posters/…`, comme CloudFront les sert depuis S3 sur la recette. Le choix se fait par la configuration : `Posters:Storage` vaut `Local` dans `appsettings.Development.json`, `S3` dans `appsettings.json` (avec `Posters:BucketName`, lu dans Parameter Store sur la recette). Aucun compte AWS n'est donc nécessaire pour développer ; les tests d'API remplacent le stockage par une doublure.
+
 Cartes de test : `4242 4242 4242 4242` (paiement accepté), `4000 0000 0000 0002` (carte refusée), avec une date future et un code quelconque. Aucun paiement réel n'est possible avec des clés de test.
 
 ## Tests
@@ -196,6 +201,8 @@ La double vente d'une place est empêchée de deux façons : le blocage se fait 
 Une séance annulée n'est jamais supprimée : elle garde la date de son annulation (`CancelledAt`), et un filtre global d'EF Core la retire de toutes les lectures. Ses ventes restent, pour le suivi, l'analyse et les remboursements ; la réservation d'un spectateur reste lisible (`IgnoreQueryFilters`), et son billet aussi.
 
 Le code d'un billet (`TicketCode`, US 3.2) est écrit par la même instruction `UPDATE` que le passage d'une réservation à `Confirmed`, et seulement si elle attendait son paiement : il n'existe pas de billet sans paiement confirmé. Il est tiré par le générateur cryptographique de .NET (128 bits) et protégé par un index unique ; le QR code ne contient que lui.
+
+L'affiche d'un film (`PosterUrl`) est soit l'adresse d'une image de TMDB (films de démonstration), soit `/posters/<nom>` pour un film ajouté par le responsable (US 5.6) : le nom est un GUID tiré par l'API, jamais celui du fichier envoyé. Le genre (`Genre`) reste un texte, mais l'API n'accepte que l'un des 17 genres de `MovieGenres` (ceux du catalogue de démonstration) : le filtre par genre de la consultation publique ne se divise pas en « Drame » et « drame ».
 
 Le passage d'un billet à l'entrée (`TicketUsedAt`, US 4.1) est vérifié et enregistré par une seule instruction : `UPDATE … SET "TicketUsedAt" = … WHERE "TicketCode" = … AND "ScreeningId" = … AND "Status" = 'Confirmed' AND "TicketUsedAt" IS NULL`. PostgreSQL verrouille la ligne : de deux scans simultanés du même billet, le second ne trouve plus la ligne « non utilisée » et ne modifie rien. Un test d'intégration lance les deux scans en parallèle.
 
