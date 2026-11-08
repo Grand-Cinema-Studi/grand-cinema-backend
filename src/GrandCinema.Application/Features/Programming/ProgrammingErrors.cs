@@ -14,6 +14,10 @@ public static class ProgrammingErrors
     public static readonly Error RoomNotAvailable =
         Error.Conflict("room-not-available", "The room is already used at that time, cleaning included.");
 
+    // Same title (whatever the case) and same release date: the movie is already in the catalog
+    public static readonly Error MovieAlreadyExists =
+        Error.Conflict("movie-already-exists", "This movie is already in the catalog.");
+
     // A screening that has started is part of the history: it no longer changes.
     public static readonly Error ScreeningStarted =
         Error.Conflict("screening-started", "The screening has already started.");

@@ -18,6 +18,12 @@ public sealed class ProgrammingRepository : IProgrammingRepository
     public async Task<IReadOnlyList<Movie>> GetMoviesAsync(CancellationToken cancellationToken = default) =>
         await _db.Movies.AsNoTracking().OrderBy(m => m.Title).ToListAsync(cancellationToken);
 
+    public Task<bool> MovieExistsAsync(string title, DateOnly releaseDate, CancellationToken cancellationToken = default) =>
+        throw new NotImplementedException("Step 27d");
+
+    public Task AddMovieAsync(Movie movie, CancellationToken cancellationToken = default) =>
+        throw new NotImplementedException("Step 27d");
+
     public async Task<IReadOnlyList<Room>> GetRoomsAsync(CancellationToken cancellationToken = default) =>
         await _db.Rooms.AsNoTracking().OrderBy(r => r.Name).ToListAsync(cancellationToken);
     public async Task<Room?> GetRoomAsync(Guid roomId, CancellationToken cancellationToken = default) =>

@@ -7,6 +7,11 @@ public interface IProgrammingRepository
     // The whole catalog, sorted by title: a new movie can be programmed before its first screening
     Task<IReadOnlyList<Movie>> GetMoviesAsync(CancellationToken cancellationToken = default);
 
+    // Whatever the case of the title: "Bird" and "BIRD" released the same day are the same movie
+    Task<bool> MovieExistsAsync(string title, DateOnly releaseDate, CancellationToken cancellationToken = default);
+
+    Task AddMovieAsync(Movie movie, CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<Room>> GetRoomsAsync(CancellationToken cancellationToken = default);
 
     Task<Room?> GetRoomAsync(Guid roomId, CancellationToken cancellationToken = default);
