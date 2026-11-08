@@ -1,8 +1,10 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using GrandCinema.Domain.Entities;
 using GrandCinema.Domain.Enums;
+using Microsoft.EntityFrameworkCore;
 using Shouldly;
 
 namespace GrandCinema.Api.Tests.Endpoints.Programming;
@@ -54,6 +56,25 @@ public class ProgrammingEndpointsTests
         return schedule.GetProperty("movies").EnumerateArray()
             .SelectMany(movie => movie.GetProperty("screenings").EnumerateArray())
             .ToList();
+    }
+
+    // The first bytes of a PNG: the API reads nothing else
+    private static readonly byte[] Png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00];
+
+    // The form of a new movie, as the front sends it (multipart/form-data)
+    private static MultipartFormDataContent MovieForm(string title, byte[] poster)
+    {
+        var file = new ByteArrayContent(poster);
+        file.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        return new MultipartFormDataContent
+        {
+            { new StringContent(title), "title" },
+            { new StringContent("Charlie Parker, de Kansas City à New York."), "synopsis" },
+            { new StringContent("161"), "durationMinutes" },
+            { new StringContent("Drame"), "genre" },
+            { new StringContent("1988-09-30"), "releaseDate" },
+            { file, "poster", "bird.png" }
+        };
     }
 
     [Fact]
@@ -212,5 +233,74 @@ public class ProgrammingEndpointsTests
         var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
         problem.GetProperty("errors").TryGetProperty("startsAt", out _).ShouldBeTrue();
         (await PublicScreeningsAsync("2032-03-16")).ShouldBeEmpty();
+    }
+
+    [Fact]
+    [Trait("US", "5.6")]
+    [Trait("Category", "Integration")]
+    public async Task When_the_manager_adds_a_movie_Then_201_it_can_be_programmed_and_its_card_is_public()
+    {
+        // Arrange: a title of its own, the catalog is shared by the tests; a room of its own for the screening
+        var title = $"Bird {Guid.NewGuid():N}";
+        var (_, roomId) = await MovieAndRoomAsync();
+        using var manager = await _api.CreateClientWithRoleAsync(UserRole.Manager);
+
+        // Act
+        using var form = MovieForm(title, Png);
+        var response = await manager.PostAsync("/api/programming/movies", form);
+
+        // Assert: criterion 1, the movie is offered to the form of the screenings
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var movieId = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("movieId").GetString()!;
+        var programming = await manager.GetFromJsonAsync<JsonElement>("/api/programming?date=2032-09-20");
+        programming.GetProperty("movies").EnumerateArray().ShouldContain(movie => movie.GetProperty("movieId").GetString() == movieId);
+        // Criterion 2: once programmed, its card is public, poster included
+        await CreateScreeningAsync(manager, Guid.Parse(movieId), roomId, "2032-09-20T20:30:00");
+        using var visitor = _api.CreateVisitorClient();
+        var card = await visitor.GetFromJsonAsync<JsonElement>($"/api/movies/{movieId}");
+        card.GetProperty("title").GetString().ShouldBe(title);
+        card.GetProperty("durationMinutes").GetInt32().ShouldBe(161);
+        card.GetProperty("posterUrl").GetString().ShouldNotBeNull().ShouldStartWith("/posters/");
+        card.GetProperty("days").GetArrayLength().ShouldBe(1);
+    }
+
+    [Theory]
+    [Trait("US", "5.6")]
+    [Trait("Category", "Integration")]
+    [InlineData(UserRole.Customer)]
+    [InlineData(UserRole.Cashier)]
+    [InlineData(UserRole.TicketInspector)]
+    public async Task When_another_role_adds_a_movie_Then_403(UserRole role)
+    {
+        // Arrange
+        using var client = await _api.CreateClientWithRoleAsync(role);
+
+        // Act
+        using var form = MovieForm($"Bird {Guid.NewGuid():N}", Png);
+        var response = await client.PostAsync("/api/programming/movies", form);
+
+        // Assert: criterion 5, the policy of the whole group
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    [Trait("US", "5.6")]
+    [Trait("Category", "Integration")]
+    public async Task When_the_poster_is_not_an_image_Then_400_on_the_poster_and_no_movie_is_added()
+    {
+        // Arrange: a text file, named and declared like a PNG
+        var title = $"Bird {Guid.NewGuid():N}";
+        using var manager = await _api.CreateClientWithRoleAsync(UserRole.Manager);
+
+        // Act
+        using var form = MovieForm(title, "<svg onload=alert(1)>"u8.ToArray());
+        var response = await manager.PostAsync("/api/programming/movies", form);
+
+        // Assert: criterion 4
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        problem.GetProperty("errors").TryGetProperty("poster", out _).ShouldBeTrue();
+        await using var db = _api.CreateDbContext();
+        (await db.Movies.AnyAsync(m => m.Title == title)).ShouldBeFalse();
     }
 }
