@@ -26,7 +26,6 @@ public class CreateMovieHandlerTests
 
     private CreateMovieHandler CreateHandler() => new(_programming.Object, _posters.Object);
 
-    // As typed in the form, spaces included
     private static CreateMovieCommand Bird(byte[]? poster = null) =>
         new("  Bird ", " Charlie Parker. ", 161, " Drame ", Release, poster ?? Png);
 
