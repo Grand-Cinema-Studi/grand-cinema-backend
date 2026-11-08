@@ -38,7 +38,7 @@ public sealed class GetProgrammingHandler : IQueryHandler<GetProgrammingQuery, P
                 .ToList(),
             Movies = movies.Select(m => m.ToProgrammingMovieDto()).ToList(),
             Rooms = rooms.Select(r => r.ToProgrammingRoomDto()).ToList(),
-            Genres = []
+            Genres = MovieGenres.All
         };
     }
 }

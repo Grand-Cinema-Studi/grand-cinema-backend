@@ -5,7 +5,6 @@ namespace GrandCinema.Application.Features.Programming;
 public static class MovieRules
 {
     public const int TitleMaxLength = 200;
-    public const int GenreMaxLength = 50;
     public const int SynopsisMaxLength = 2000;
     // From a short film to the longest features a cinema shows
     public const int MaxDurationMinutes = 600;
@@ -15,7 +14,10 @@ public static class MovieRules
         var errors = new Dictionary<string, string[]>();
         Text(errors, "title", title, TitleMaxLength);
         Text(errors, "synopsis", synopsis, SynopsisMaxLength);
-        Text(errors, "genre", genre, GenreMaxLength);
+        if (genre is null || !MovieGenres.All.Contains(genre.Trim()))
+        {
+            errors["genre"] = ["The genre is one of the list given by GET /api/programming (genres)."];
+        }
         if (durationMinutes is not (>= 1 and <= MaxDurationMinutes))
         {
             errors["durationMinutes"] = [$"The duration is between 1 and {MaxDurationMinutes} minutes."];

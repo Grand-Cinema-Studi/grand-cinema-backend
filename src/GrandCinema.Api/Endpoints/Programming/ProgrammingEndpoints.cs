@@ -82,7 +82,7 @@ public static class ProgrammingEndpoints
         programming.MapPost("/movies", CreateMovie)
             .WithName("CreateMovie")
             .WithSummary("Add a movie to the catalog")
-            .WithDescription("multipart/form-data: title, synopsis, durationMinutes, genre, releaseDate (e.g. 1988-09-30) and poster (JPEG, PNG or WebP, 2 MB at most, recognised from its first bytes). The movie can then be programmed; the public pages show it from its first screening. 409 movie-already-exists for the same title and release date.")
+            .WithDescription("multipart/form-data: title, synopsis, durationMinutes, genre (one of the list given by GET /api/programming), releaseDate (e.g. 1988-09-30) and poster (JPEG, PNG or WebP, 2 MB at most, recognised from its first bytes). The movie can then be programmed; the public pages show it from its first screening. 409 movie-already-exists for the same title and release date.")
             .DisableAntiforgery()
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status401Unauthorized)
