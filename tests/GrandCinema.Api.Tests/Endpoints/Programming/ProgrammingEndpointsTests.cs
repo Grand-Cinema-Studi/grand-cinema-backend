@@ -254,6 +254,8 @@ public class ProgrammingEndpointsTests
         var movieId = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("movieId").GetString()!;
         var programming = await manager.GetFromJsonAsync<JsonElement>("/api/programming?date=2032-09-20");
         programming.GetProperty("movies").EnumerateArray().ShouldContain(movie => movie.GetProperty("movieId").GetString() == movieId);
+        // The genre was chosen in the list the manager receives
+        programming.GetProperty("genres").EnumerateArray().Select(genre => genre.GetString()).ShouldContain("Drame");
         // Criterion 2: once programmed, its card is public, poster included
         await CreateScreeningAsync(manager, Guid.Parse(movieId), roomId, "2032-09-20T20:30:00");
         using var visitor = _api.CreateVisitorClient();

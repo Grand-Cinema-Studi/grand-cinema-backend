@@ -107,4 +107,18 @@ public class CreateMovieHandlerTests
         result.Error.ShouldBe(ProgrammingErrors.MovieAlreadyExists);
         NothingWasSaved();
     }
+
+    [Theory]
+    [Trait("US", "5.6")]
+    [InlineData("drame")] // the case counts
+    [InlineData("Opéra")] // not in the list
+    public async Task When_the_genre_is_not_in_the_list_Then_it_is_refused_and_nothing_is_saved(string genre)
+    {
+        // Act
+        var result = await CreateHandler().Handle(new CreateMovieCommand("Bird", "Charlie Parker.", 161, genre, Release, Png));
+
+        // Assert: only the genre is refused
+        result.Error.ShouldNotBeNull().ValidationErrors.ShouldNotBeNull().Keys.ShouldBe(new[] { "genre" });
+        NothingWasSaved();
+    }
 }
