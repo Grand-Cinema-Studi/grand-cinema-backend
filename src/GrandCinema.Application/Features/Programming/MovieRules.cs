@@ -16,7 +16,7 @@ public static class MovieRules
         Text(errors, "synopsis", synopsis, SynopsisMaxLength);
         if (genre is null || !MovieGenres.All.Contains(genre.Trim()))
         {
-            errors["genre"] = ["The genre is one of the list given by GET /api/programming (genres)."];
+            errors["genre"] = [$"The genre is one of: {string.Join(", ", MovieGenres.All)}."];
         }
         if (durationMinutes is not (>= 1 and <= MaxDurationMinutes))
         {
