@@ -26,7 +26,7 @@ public sealed class MovieForm
     public int? DurationMinutes { get; set; }
     public string? Genre { get; set; }
     public DateOnly? ReleaseDate { get; set; }
-    public IFormFile? Poster { get; set; }
+    public IFormFile Poster { get; set; } = null!;
 }
 
 public sealed record class MovieCreatedResponse(Guid MovieId);
