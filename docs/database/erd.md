@@ -32,6 +32,7 @@ erDiagram
         varchar Genre "50"
         date ReleaseDate
         varchar PosterUrl "500"
+        timestamptz ArchivedAt "UTC, nullable : film archivé, plus proposé à la programmation (US 5.6)"
     }
     Rooms {
         uuid Id PK
