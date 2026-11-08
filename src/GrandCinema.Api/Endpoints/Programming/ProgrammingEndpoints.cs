@@ -2,10 +2,12 @@ using GrandCinema.Api.Errors;
 using GrandCinema.Api.Security;
 using GrandCinema.Application.Abstractions.Cqrs;
 using GrandCinema.Application.Abstractions.Results;
+using GrandCinema.Application.Features.Programming;
 using GrandCinema.Application.Features.Programming.Commands;
 using GrandCinema.Application.Features.Programming.DTOs;
 using GrandCinema.Application.Features.Programming.Queries;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Mvc;
 
 namespace GrandCinema.Api.Endpoints.Programming;
 
@@ -16,6 +18,19 @@ public sealed record class UpdateScreeningRequest(DateTime StartsAt, decimal Pri
 
 public sealed record class ScreeningCreatedResponse(Guid ScreeningId);
 
+// The form of a new movie (multipart/form-data), text fields and the poster file. Every field is checked by the handler
+public sealed class MovieForm
+{
+    public string? Title { get; set; }
+    public string? Synopsis { get; set; }
+    public int? DurationMinutes { get; set; }
+    public string? Genre { get; set; }
+    public DateOnly? ReleaseDate { get; set; }
+    public IFormFile? Poster { get; set; }
+}
+
+public sealed record class MovieCreatedResponse(Guid MovieId);
+
 public static class ProgrammingEndpoints
 {
     private const string Confirmation =
@@ -23,7 +38,7 @@ public static class ProgrammingEndpoints
 
     public static IEndpointRouteBuilder MapProgrammingEndpoints(this IEndpointRouteBuilder app)
     {
-        // Criterion 4: the whole group is reserved to the manager; any other role receives 403, a visitor 401
+        // The whole group is reserved to the manager; any other role receives 403, a visitor 401
         var programming = app.MapGroup("/api/programming")
             .RequireAuthorization(AuthenticationSetup.ManagerPolicy)
             .WithTags("Programming");
@@ -62,6 +77,16 @@ public static class ProgrammingEndpoints
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        programming.MapPost("/movies", CreateMovie)
+            .WithName("CreateMovie")
+            .WithSummary("Add a movie to the catalog")
+            .WithDescription("multipart/form-data: title, synopsis, durationMinutes, genre, releaseDate (e.g. 1988-09-30) and poster (JPEG, PNG or WebP, 2 MB at most, recognised from its first bytes). The movie can then be programmed; the public pages show it from its first screening. 409 movie-already-exists for the same title and release date.")
+            .DisableAntiforgery()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status409Conflict);
 
         return app;
@@ -119,5 +144,33 @@ public static class ProgrammingEndpoints
         }
 
         return TypedResults.NoContent();
+    }
+
+    private static async Task<Results<Created<MovieCreatedResponse>, ProblemHttpResult>> CreateMovie(
+        [FromForm] MovieForm form,
+        ICommandHandler<CreateMovieCommand, Result<Guid>> handler,
+        CancellationToken cancellationToken)
+    {
+        var poster = await ReadPosterAsync(form.Poster, cancellationToken);
+        var result = await handler.Handle(new CreateMovieCommand(form.Title, form.Synopsis, form.DurationMinutes, form.Genre, form.ReleaseDate, poster), cancellationToken);
+        if (result.IsFailure)
+        {
+            return result.Error.ToProblem();
+        }
+
+        return TypedResults.Created($"/api/movies/{result.Value}", new MovieCreatedResponse(result.Value));
+    }
+
+    private static async Task<byte[]?> ReadPosterAsync(IFormFile? file, CancellationToken cancellationToken)
+    {
+        if (file is null)
+        {
+            return null;
+        }
+
+        var content = new byte[Math.Min(file.Length, PosterRules.MaxBytes + 1)];
+        await using var stream = file.OpenReadStream();
+        await stream.ReadExactlyAsync(content, cancellationToken);
+        return content;
     }
 }
