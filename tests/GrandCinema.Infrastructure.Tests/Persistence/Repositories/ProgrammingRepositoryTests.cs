@@ -138,4 +138,27 @@ public class ProgrammingRepositoryTests : IClassFixture<PostgreSqlFixture>
         var paid = await new ReservationRepository(read).GetByIdAsync(sale);
         paid.ShouldNotBeNull().Screening.Id.ShouldBe(screening.Id);
     }
+
+    [Fact]
+    [Trait("US", "5.6")]
+    [Trait("Category", "Integration")]
+    public async Task When_a_movie_is_added_Then_it_exists_whatever_the_case_of_its_title_but_not_on_another_release_date()
+    {
+        // Arrange: a title of its own, the database is shared by the tests of the class
+        var title = $"Bird {Guid.NewGuid():N}";
+        var movie = new Movie { Id = Guid.NewGuid(), Title = title, Synopsis = "Charlie Parker", DurationMinutes = 161, Genre = "Drama", ReleaseDate = new DateOnly(1988, 9, 30), PosterUrl = "/posters/bird.png" };
+
+        // Act
+        await using (var db = _database.CreateDbContext())
+        {
+            await new ProgrammingRepository(db).AddMovieAsync(movie);
+        }
+
+        // Assert: read back by a new context, as the next request does; upper() is run by PostgreSQL
+        await using var read = _database.CreateDbContext();
+        var repository = new ProgrammingRepository(read);
+        (await repository.MovieExistsAsync(title.ToUpperInvariant(), movie.ReleaseDate)).ShouldBeTrue();
+        (await repository.MovieExistsAsync(title, movie.ReleaseDate.AddYears(1))).ShouldBeFalse();
+        (await read.Movies.SingleAsync(m => m.Id == movie.Id)).PosterUrl.ShouldBe("/posters/bird.png");
+    }
 }
