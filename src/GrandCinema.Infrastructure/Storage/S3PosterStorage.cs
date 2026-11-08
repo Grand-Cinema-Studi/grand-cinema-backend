@@ -1,4 +1,5 @@
 using Amazon.S3;
+using Amazon.S3.Model;
 using GrandCinema.Application.Abstractions.Storage;
 
 namespace GrandCinema.Infrastructure.Storage;
@@ -18,6 +19,20 @@ public sealed class S3PosterStorage : IPosterStorage
         _bucketName = options.BucketName;
     }
 
-    public Task<string> SaveAsync(byte[] content, PosterFormat format, CancellationToken cancellationToken = default) =>
-        throw new NotImplementedException("Step 27d");
+    public async Task<string> SaveAsync(byte[] content, PosterFormat format, CancellationToken cancellationToken = default)
+    {
+        // A random name, never the one sent by the browser: no file is overwritten, no path is made up
+        var key = $"posters/{Guid.NewGuid():N}{format.Extension}";
+        using var stream = new MemoryStream(content);
+        var request = new PutObjectRequest
+        {
+            BucketName = _bucketName,
+            Key = key,
+            InputStream = stream,
+            ContentType = format.ContentType
+        };
+        request.Headers.CacheControl = CacheControl;
+        await _s3.PutObjectAsync(request, cancellationToken);
+        return $"/{key}";
+    }
 }

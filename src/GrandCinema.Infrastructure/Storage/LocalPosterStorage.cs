@@ -12,6 +12,11 @@ public sealed class LocalPosterStorage : IPosterStorage
         _folder = options.LocalFolder;
     }
 
-    public Task<string> SaveAsync(byte[] content, PosterFormat format, CancellationToken cancellationToken = default) =>
-        throw new NotImplementedException("Step 27d");
+    public async Task<string> SaveAsync(byte[] content, PosterFormat format, CancellationToken cancellationToken = default)
+    {
+        Directory.CreateDirectory(_folder);
+        var name = $"{Guid.NewGuid():N}{format.Extension}";
+        await File.WriteAllBytesAsync(Path.Combine(_folder, name), content, cancellationToken);
+        return $"/posters/{name}";
+    }
 }
