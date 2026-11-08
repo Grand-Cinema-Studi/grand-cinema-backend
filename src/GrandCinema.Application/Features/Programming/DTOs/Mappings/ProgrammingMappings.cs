@@ -21,7 +21,11 @@ public static class ProgrammingMappings
     {
         MovieId = movie.Id,
         Title = movie.Title,
-        DurationMinutes = movie.DurationMinutes
+        DurationMinutes = movie.DurationMinutes,
+        Synopsis = movie.Synopsis,
+        Genre = movie.Genre,
+        ReleaseDate = movie.ReleaseDate,
+        PosterUrl = movie.PosterUrl
     };
 
     public static ProgrammingRoomDto ToProgrammingRoomDto(this Room room) => new()

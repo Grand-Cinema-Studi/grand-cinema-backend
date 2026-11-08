@@ -18,6 +18,14 @@ public static class ProgrammingErrors
     public static readonly Error MovieAlreadyExists =
         Error.Conflict("movie-already-exists", "This movie is already in the catalog.");
 
+    // An archived movie no longer changes and can no longer be programmed
+    public static readonly Error MovieArchived =
+        Error.Conflict("movie-archived", "The movie is archived: it can no longer be changed nor programmed.");
+
+    // Its screenings were placed with its duration, and the public must not lose a movie still shown
+    public static readonly Error MovieHasScreenings =
+        Error.Conflict("movie-has-screenings", "A screening of the movie has not ended: cancel it, or wait for its end.");
+
     // A screening that has started is part of the history: it no longer changes.
     public static readonly Error ScreeningStarted =
         Error.Conflict("screening-started", "The screening has already started.");
