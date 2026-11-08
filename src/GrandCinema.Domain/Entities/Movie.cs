@@ -9,4 +9,6 @@ public class Movie
     public required string Genre { get; set; }
     public DateOnly ReleaseDate { get; set; }
     public required string PosterUrl { get; set; }
+    // An archived movie is no longer offered to the programming; it is never deleted (past screenings, sales, tickets). Instant in UTC
+    public DateTime? ArchivedAt { get; set; }
 }

@@ -31,6 +31,18 @@ public sealed class ProgrammingRepository : IProgrammingRepository
         await _db.SaveChangesAsync(cancellationToken);
     }
 
+    public Task<bool> OtherMovieExistsAsync(Guid movieId, string title, DateOnly releaseDate, CancellationToken cancellationToken = default) =>
+        throw new NotImplementedException("Step 28c");
+
+    public Task UpdateMovieAsync(Movie movie, CancellationToken cancellationToken = default) =>
+        throw new NotImplementedException("Step 28c");
+
+    public Task<bool> HasScreeningsNotEndedAsync(Guid movieId, DateTime startedAfter, CancellationToken cancellationToken = default) =>
+        throw new NotImplementedException("Step 28c");
+
+    public Task ArchiveMovieAsync(Guid movieId, DateTime nowUtc, CancellationToken cancellationToken = default) =>
+        throw new NotImplementedException("Step 28c");
+
     public async Task<IReadOnlyList<Room>> GetRoomsAsync(CancellationToken cancellationToken = default) =>
         await _db.Rooms.AsNoTracking().OrderBy(r => r.Name).ToListAsync(cancellationToken);
     public async Task<Room?> GetRoomAsync(Guid roomId, CancellationToken cancellationToken = default) =>
