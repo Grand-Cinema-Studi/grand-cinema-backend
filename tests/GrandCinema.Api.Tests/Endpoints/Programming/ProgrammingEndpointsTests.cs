@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -61,21 +62,37 @@ public class ProgrammingEndpointsTests
     // The first bytes of a PNG: the API reads nothing else
     private static readonly byte[] Png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00];
 
-    // The form of a new movie, as the front sends it (multipart/form-data)
-    private static MultipartFormDataContent MovieForm(string title, byte[] poster)
+    // The form of a movie, as the front sends it (multipart/form-data); without a poster to edit a movie and keep its poster
+    private static MultipartFormDataContent MovieForm(string title, byte[]? poster, string genre = "Drame", int durationMinutes = 161)
     {
-        var file = new ByteArrayContent(poster);
-        file.Headers.ContentType = new MediaTypeHeaderValue("image/png");
-        return new MultipartFormDataContent
+        var form = new MultipartFormDataContent
         {
             { new StringContent(title), "title" },
             { new StringContent("Charlie Parker, de Kansas City à New York."), "synopsis" },
-            { new StringContent("161"), "durationMinutes" },
-            { new StringContent("Drame"), "genre" },
-            { new StringContent("1988-09-30"), "releaseDate" },
-            { file, "poster", "bird.png" }
+            { new StringContent(durationMinutes.ToString(CultureInfo.InvariantCulture)), "durationMinutes" },
+            { new StringContent(genre), "genre" },
+            { new StringContent("1988-09-30"), "releaseDate" }
         };
+        if (poster is not null)
+        {
+            var file = new ByteArrayContent(poster);
+            file.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+            form.Add(file, "poster", "bird.png");
+        }
+        return form;
     }
+
+    // US 5.6: a movie added as the front does, with a title of its own (the catalog is shared by the tests)
+    private static async Task<string> AddMovieAsync(HttpClient manager)
+    {
+        using var form = MovieForm($"Bird {Guid.NewGuid():N}", Png);
+        var response = await manager.PostAsync("/api/programming/movies", form);
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+        return (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("movieId").GetString()!;
+    }
+
+    private static async Task<string?> ProblemTypeAsync(HttpResponseMessage response) =>
+        (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("type").GetString();
 
     [Fact]
     [Trait("US", "5.2")]
@@ -304,5 +321,107 @@ public class ProgrammingEndpointsTests
         problem.GetProperty("errors").TryGetProperty("poster", out _).ShouldBeTrue();
         await using var db = _api.CreateDbContext();
         (await db.Movies.AnyAsync(m => m.Title == title)).ShouldBeFalse();
+    }
+
+    [Fact]
+    [Trait("US", "5.6")]
+    [Trait("Category", "Integration")]
+    public async Task When_the_manager_edits_a_movie_without_a_new_poster_Then_204_its_card_changes_and_keeps_its_poster()
+    {
+        // Arrange
+        using var manager = await _api.CreateClientWithRoleAsync(UserRole.Manager);
+        var movieId = await AddMovieAsync(manager);
+        using var visitor = _api.CreateVisitorClient();
+        var before = await visitor.GetFromJsonAsync<JsonElement>($"/api/movies/{movieId}");
+        var title = $"Bird, version restaurée {Guid.NewGuid():N}";
+
+        // Act: the same form, without a poster
+        using var form = MovieForm(title, poster: null, genre: "Biopic");
+        var response = await manager.PutAsync($"/api/programming/movies/{movieId}", form);
+
+        // Assert: criterion 3, the public card changes; the poster stays
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var after = await visitor.GetFromJsonAsync<JsonElement>($"/api/movies/{movieId}");
+        after.GetProperty("title").GetString().ShouldBe(title);
+        after.GetProperty("genre").GetString().ShouldBe("Biopic");
+        after.GetProperty("posterUrl").GetString().ShouldBe(before.GetProperty("posterUrl").GetString());
+        // The programming gives the whole card, for the form of the front
+        var programming = await manager.GetFromJsonAsync<JsonElement>("/api/programming?date=2032-09-21");
+        var listed = programming.GetProperty("movies").EnumerateArray().Single(movie => movie.GetProperty("movieId").GetString() == movieId);
+        listed.GetProperty("genre").GetString().ShouldBe("Biopic");
+        listed.GetProperty("synopsis").GetString().ShouldBe("Charlie Parker, de Kansas City à New York.");
+        listed.GetProperty("releaseDate").GetString().ShouldBe("1988-09-30");
+        listed.GetProperty("posterUrl").GetString().ShouldNotBeNull().ShouldStartWith("/posters/");
+    }
+
+    [Fact]
+    [Trait("US", "5.6")]
+    [Trait("Category", "Integration")]
+    public async Task When_the_manager_archives_a_movie_Then_204_it_is_no_longer_offered_nor_programmable()
+    {
+        // Arrange: a movie without any screening, and a free room
+        using var manager = await _api.CreateClientWithRoleAsync(UserRole.Manager);
+        var movieId = await AddMovieAsync(manager);
+        var (_, roomId) = await MovieAndRoomAsync();
+
+        // Act
+        var archived = await manager.PostAsync($"/api/programming/movies/{movieId}/archive", null);
+
+        // Assert: criterion 6, no longer offered, no longer programmable; archiving twice changes nothing
+        archived.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var programming = await manager.GetFromJsonAsync<JsonElement>("/api/programming?date=2032-09-21");
+        programming.GetProperty("movies").EnumerateArray().ShouldNotContain(movie => movie.GetProperty("movieId").GetString() == movieId);
+        var screening = await manager.PostAsJsonAsync("/api/programming/screenings", new { movieId, roomId, startsAt = "2032-09-21T20:30:00", price = 9.5m });
+        screening.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await ProblemTypeAsync(screening)).ShouldBe("/errors/movie-archived");
+        (await manager.PostAsync($"/api/programming/movies/{movieId}/archive", null)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        // Never deleted: its card is still readable (the tickets of its past screenings point to it)
+        using var visitor = _api.CreateVisitorClient();
+        (await visitor.GetAsync($"/api/movies/{movieId}")).StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    [Trait("US", "5.6")]
+    [Trait("Category", "Integration")]
+    public async Task When_a_screening_of_the_movie_is_to_come_Then_archiving_it_and_changing_its_duration_are_refused()
+    {
+        // Arrange: a movie of 161 minutes, programmed on 21/09/2032
+        using var manager = await _api.CreateClientWithRoleAsync(UserRole.Manager);
+        var movieId = await AddMovieAsync(manager);
+        var (_, roomId) = await MovieAndRoomAsync();
+        await CreateScreeningAsync(manager, Guid.Parse(movieId), roomId, "2032-09-21T14:00:00");
+
+        // Act
+        var archived = await manager.PostAsync($"/api/programming/movies/{movieId}/archive", null);
+        using var longer = MovieForm($"Bird {Guid.NewGuid():N}", poster: null, durationMinutes: 170);
+        var edited = await manager.PutAsync($"/api/programming/movies/{movieId}", longer);
+
+        // Assert: criteria 3 and 6
+        archived.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await ProblemTypeAsync(archived)).ShouldBe("/errors/movie-has-screenings");
+        edited.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await ProblemTypeAsync(edited)).ShouldBe("/errors/movie-has-screenings");
+        var programming = await manager.GetFromJsonAsync<JsonElement>("/api/programming?date=2032-09-21");
+        programming.GetProperty("movies").EnumerateArray().ShouldContain(movie => movie.GetProperty("movieId").GetString() == movieId);
+    }
+
+    [Theory]
+    [Trait("US", "5.6")]
+    [Trait("Category", "Integration")]
+    [InlineData(UserRole.Customer)]
+    [InlineData(UserRole.Cashier)]
+    [InlineData(UserRole.TicketInspector)]
+    public async Task When_another_role_archives_a_movie_Then_403(UserRole role)
+    {
+        // Arrange: a movie of the manager
+        using var manager = await _api.CreateClientWithRoleAsync(UserRole.Manager);
+        var movieId = await AddMovieAsync(manager);
+        using var client = await _api.CreateClientWithRoleAsync(role);
+
+        // Act
+        var response = await client.PostAsync($"/api/programming/movies/{movieId}/archive", null);
+
+        // Assert: criterion 5, the policy of the whole group
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
 }

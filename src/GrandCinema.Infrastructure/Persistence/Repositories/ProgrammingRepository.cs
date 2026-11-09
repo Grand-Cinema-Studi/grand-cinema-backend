@@ -16,19 +16,40 @@ public sealed class ProgrammingRepository : IProgrammingRepository
     }
 
     public async Task<IReadOnlyList<Movie>> GetMoviesAsync(CancellationToken cancellationToken = default) =>
-        await _db.Movies.AsNoTracking().OrderBy(m => m.Title).ToListAsync(cancellationToken);
+        await _db.Movies.AsNoTracking().Where(m => m.ArchivedAt == null).OrderBy(m => m.Title).ToListAsync(cancellationToken);
 
-    public async Task<bool> MovieExistsAsync(string title, DateOnly releaseDate, CancellationToken cancellationToken = default)
-    {
-        // upper() on both sides, run by PostgreSQL: the case of the title is ignored
-        var normalized = title.ToUpperInvariant();
-        return await _db.Movies.AnyAsync(m => m.ReleaseDate == releaseDate && m.Title.ToUpper() == normalized, cancellationToken);
-    }
+    public Task<bool> MovieExistsAsync(string title, DateOnly releaseDate, CancellationToken cancellationToken = default) =>
+        SameMovies(title, releaseDate).AnyAsync(cancellationToken);
 
     public async Task AddMovieAsync(Movie movie, CancellationToken cancellationToken = default)
     {
         _db.Movies.Add(movie);
         await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    public Task<bool> OtherMovieExistsAsync(Guid movieId, string title, DateOnly releaseDate, CancellationToken cancellationToken = default) =>
+        SameMovies(title, releaseDate).AnyAsync(m => m.Id != movieId, cancellationToken);
+
+    public async Task UpdateMovieAsync(Movie movie, CancellationToken cancellationToken = default)
+    {
+        _db.Movies.Update(movie);
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    // The global filter leaves the cancelled screenings out
+    public Task<bool> HasScreeningsNotEndedAsync(Guid movieId, DateTime startedAfter, CancellationToken cancellationToken = default) =>
+        _db.Screenings.AnyAsync(s => s.MovieId == movieId && s.StartsAt > startedAfter, cancellationToken);
+
+    public async Task ArchiveMovieAsync(Guid movieId, DateTime nowUtc, CancellationToken cancellationToken = default) =>
+        await _db.Movies
+            .Where(m => m.Id == movieId && m.ArchivedAt == null)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(m => m.ArchivedAt, nowUtc), cancellationToken);
+
+    // Same release date and same title whatever the case (upper() run by PostgreSQL); an archived movie no longer counts
+    private IQueryable<Movie> SameMovies(string title, DateOnly releaseDate)
+    {
+        var normalized = title.ToUpperInvariant();
+        return _db.Movies.Where(m => m.ArchivedAt == null && m.ReleaseDate == releaseDate && m.Title.ToUpper() == normalized);
     }
 
     public async Task<IReadOnlyList<Room>> GetRoomsAsync(CancellationToken cancellationToken = default) =>

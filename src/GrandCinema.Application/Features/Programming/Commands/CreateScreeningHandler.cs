@@ -30,6 +30,10 @@ public class CreateScreeningHandler : ICommandHandler<CreateScreeningCommand, Re
         {
             return MovieErrors.MovieNotFound;
         }
+        if (movie.ArchivedAt is not null)
+        {
+            return ProgrammingErrors.MovieArchived;
+        }
 
         var room = await _programmingRepository.GetRoomAsync(command.RoomId, cancellationToken);
         if (room is null)

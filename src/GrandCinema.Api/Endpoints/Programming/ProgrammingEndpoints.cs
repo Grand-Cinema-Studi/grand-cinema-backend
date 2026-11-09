@@ -89,6 +89,26 @@ public static class ProgrammingEndpoints
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status409Conflict);
 
+        programming.MapPut("/movies/{movieId:guid}", UpdateMovie)
+            .WithName("UpdateMovie")
+            .WithSummary("Change the card of a movie")
+            .WithDescription("multipart/form-data, the fields of POST /movies; the poster is optional: without it, the poster does not change. 409 movie-has-screenings when the duration changes while a screening of the movie has not ended; 409 movie-archived; 409 movie-already-exists (another movie of the same title and release date).")
+            .DisableAntiforgery()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        programming.MapPost("/movies/{movieId:guid}/archive", ArchiveMovie)
+            .WithName("ArchiveMovie")
+            .WithSummary("Archive a movie")
+            .WithDescription("The movie is no longer offered to the programming and can no longer be programmed (409 movie-archived). It is never deleted: its past screenings, sales and tickets keep it, and its card stays readable. 409 movie-has-screenings while a screening of the movie has not ended. Archiving twice changes nothing.")
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
         return app;
     }
 
@@ -159,6 +179,36 @@ public static class ProgrammingEndpoints
         }
 
         return TypedResults.Created($"/api/movies/{result.Value}", new MovieCreatedResponse(result.Value));
+    }
+
+    private static async Task<Results<NoContent, ProblemHttpResult>> UpdateMovie(
+        Guid movieId,
+        [FromForm] MovieForm form,
+        ICommandHandler<UpdateMovieCommand, Result<Guid>> handler,
+        CancellationToken cancellationToken)
+    {
+        var poster = await ReadPosterAsync(form.Poster, cancellationToken);
+        var result = await handler.Handle(new UpdateMovieCommand(movieId, form.Title, form.Synopsis, form.DurationMinutes, form.Genre, form.ReleaseDate, poster), cancellationToken);
+        if (result.IsFailure)
+        {
+            return result.Error.ToProblem();
+        }
+
+        return TypedResults.NoContent();
+    }
+
+    private static async Task<Results<NoContent, ProblemHttpResult>> ArchiveMovie(
+        Guid movieId,
+        ICommandHandler<ArchiveMovieCommand, Result<Guid>> handler,
+        CancellationToken cancellationToken)
+    {
+        var result = await handler.Handle(new ArchiveMovieCommand(movieId), cancellationToken);
+        if (result.IsFailure)
+        {
+            return result.Error.ToProblem();
+        }
+
+        return TypedResults.NoContent();
     }
 
     private static async Task<byte[]?> ReadPosterAsync(IFormFile? file, CancellationToken cancellationToken)

@@ -132,4 +132,19 @@ public class CreateScreeningHandlerTests
         result.Error.ShouldNotBeNull().ValidationErrors.ShouldNotBeNull().Keys.ShouldBe(new[] { "startsAt" });
         NothingWasAdded();
     }
+
+    [Fact]
+    [Trait("US", "5.6")]
+    public async Task When_the_movie_is_archived_Then_movie_archived_and_nothing_is_added()
+    {
+        // Arrange
+        _bird.ArchivedAt = new DateTime(2026, 7, 1, 8, 0, 0, DateTimeKind.Utc);
+
+        // Act
+        var result = await CreateHandler().Handle(new CreateScreeningCommand(_bird.Id, _room.Id, Evening, 9.5m));
+
+        // Assert
+        result.Error.ShouldBe(ProgrammingErrors.MovieArchived);
+        NothingWasAdded();
+    }
 }

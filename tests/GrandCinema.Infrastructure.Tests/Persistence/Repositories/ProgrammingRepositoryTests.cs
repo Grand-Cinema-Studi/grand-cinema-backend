@@ -161,4 +161,55 @@ public class ProgrammingRepositoryTests : IClassFixture<PostgreSqlFixture>
         (await repository.MovieExistsAsync(title, movie.ReleaseDate.AddYears(1))).ShouldBeFalse();
         (await read.Movies.SingleAsync(m => m.Id == movie.Id)).PosterUrl.ShouldBe("/posters/bird.png");
     }
+
+    [Fact]
+    [Trait("US", "5.6")]
+    [Trait("Category", "Integration")]
+    public async Task When_a_movie_is_archived_Then_it_is_neither_offered_nor_counted_as_a_duplicate()
+    {
+        // Arrange: two movies of the same title and date, a title of their own (the database is shared by the tests of the class)
+        var title = $"Bird {Guid.NewGuid():N}";
+        Movie Bird() => new() { Id = Guid.NewGuid(), Title = title, Synopsis = "Charlie Parker", DurationMinutes = 161, Genre = "Biopic", ReleaseDate = new DateOnly(1988, 9, 30), PosterUrl = "/posters/bird.png" };
+        var old = Bird();
+        var current = Bird();
+        await using (var seed = _database.CreateDbContext())
+        {
+            seed.Movies.AddRange(old, current);
+            await seed.SaveChangesAsync();
+        }
+
+        // Act: the old one is archived, twice
+        await using (var db = _database.CreateDbContext())
+        {
+            await new ProgrammingRepository(db).ArchiveMovieAsync(old.Id, Now);
+            await new ProgrammingRepository(db).ArchiveMovieAsync(old.Id, Now.AddHours(1));
+        }
+
+        // Assert: kept, with the date of the first archiving; no longer offered; the active one alone counts as a duplicate
+        await using var read = _database.CreateDbContext();
+        var repository = new ProgrammingRepository(read);
+        (await read.Movies.SingleAsync(m => m.Id == old.Id)).ArchivedAt.ShouldBe(Now);
+        (await repository.GetMoviesAsync()).Select(m => m.Id).ShouldNotContain(old.Id);
+        (await repository.OtherMovieExistsAsync(current.Id, title, current.ReleaseDate)).ShouldBeFalse();
+        (await repository.OtherMovieExistsAsync(old.Id, title, current.ReleaseDate)).ShouldBeTrue();
+    }
+
+    [Fact]
+    [Trait("US", "5.6")]
+    [Trait("Category", "Integration")]
+    public async Task When_a_screening_of_the_movie_has_not_ended_Then_it_is_found_until_its_end_and_never_once_cancelled()
+    {
+        // Arrange: Bird (161 minutes) at 20:00
+        var (screening, _) = await ScreeningAsync(Day.AddHours(20));
+        await using var read = _database.CreateDbContext();
+        var repository = new ProgrammingRepository(read);
+
+        // Act and Assert: at 21:00 (started after 18:19), not ended; at 23:00 (started after 20:19), ended
+        (await repository.HasScreeningsNotEndedAsync(screening.Movie.Id, Day.AddHours(21).AddMinutes(-161))).ShouldBeTrue();
+        (await repository.HasScreeningsNotEndedAsync(screening.Movie.Id, Day.AddHours(23).AddMinutes(-161))).ShouldBeFalse();
+        // A cancelled screening no longer counts (global filter of the screenings)
+        await CancelAsync(screening);
+        await using var afterCancel = _database.CreateDbContext();
+        (await new ProgrammingRepository(afterCancel).HasScreeningsNotEndedAsync(screening.Movie.Id, Day.AddHours(21).AddMinutes(-161))).ShouldBeFalse();
+    }
 }

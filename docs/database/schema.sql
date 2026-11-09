@@ -177,3 +177,11 @@ VALUES ('20261107073746_AddTicketUsedAt', '10.0.12');
 
 COMMIT;
 
+START TRANSACTION;
+ALTER TABLE "Movies" ADD "ArchivedAt" timestamp with time zone;
+
+INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+VALUES ('20261108190004_AddMovieArchivedAt', '10.0.12');
+
+COMMIT;
+
