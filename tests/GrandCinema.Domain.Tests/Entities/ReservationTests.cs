@@ -55,7 +55,7 @@ public class ReservationTests
         var codes = Enumerable.Range(0, 1000).Select(_ => Reservation.NewTicketCode()).ToList();
 
         // Assert: 128 random bits, written in lower-case hexadecimal; never the same twice
-        codes.ShouldAllBe(code => System.Text.RegularExpressions.Regex.IsMatch(code, "^[0-9a-f]{32}$"));
+        codes.ShouldAllBe(code => code.Length == 32 && code.All(char.IsAsciiHexDigitLower));
         codes.Distinct().Count().ShouldBe(1000);
     }
 

@@ -49,8 +49,10 @@ public sealed class ProgrammingRepository : IProgrammingRepository
     private IQueryable<Movie> SameMovies(string title, DateOnly releaseDate)
     {
         var normalized = title.ToUpperInvariant();
+#pragma warning disable CA1862
         return _db.Movies.Where(m => m.ArchivedAt == null && m.ReleaseDate == releaseDate && m.Title.ToUpper() == normalized);
     }
+#pragma warning restore CA1862
 
     public async Task<IReadOnlyList<Room>> GetRoomsAsync(CancellationToken cancellationToken = default) =>
         await _db.Rooms.AsNoTracking().OrderBy(r => r.Name).ToListAsync(cancellationToken);
