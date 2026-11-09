@@ -10,6 +10,7 @@ Projet réalisé dans le cadre du Bachelor Développeur d'Application (Studi), B
 | Dépôt frontend | https://github.com/Grand-Cinema-Studi/grand-cinema-frontend |
 | Dépôt de documentation (architecture, décisions techniques, règles communes, déploiement) | https://github.com/Grand-Cinema-Studi/grand-cinema-docs |
 | Backlog (EPICs, user stories) | https://github.com/orgs/Grand-Cinema-Studi/projects/3 |
+| Qualité du code (SonarCloud) | https://sonarcloud.io/project/overview?id=Grand-Cinema-Studi_grand-cinema-backend |
 
 ## Stack
 
