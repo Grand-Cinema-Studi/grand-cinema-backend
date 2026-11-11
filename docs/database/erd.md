@@ -1,0 +1,139 @@
+# Schéma entité-relation – Grand Cinema
+
+Schéma de la base PostgreSQL, tel que créé par les migrations, de `InitialSchema` à `AddMovieArchivedAt` (US 5.6, 08/11/2026). Le script SQL correspondant est [schema.sql](schema.sql).
+
+```mermaid
+erDiagram
+    Users |o--o{ Reservations : "fait"
+    Screenings ||--o{ Reservations : "concerne"
+    Movies ||--o{ Screenings : "est projeté"
+    Rooms ||--o{ Screenings : "accueille"
+    Rooms ||--o{ Seats : "contient"
+    Reservations ||--|{ ReservedSeats : "réserve"
+    Seats ||--o{ ReservedSeats : "est réservée"
+    Screenings ||--o{ ReservedSeats : "pour"
+
+    Users {
+        uuid Id PK
+        varchar Email UK "256"
+        varchar PasswordHash "256"
+        varchar FirstName "100"
+        varchar LastName "100"
+        varchar Role "Customer, Cashier, TicketInspector, Manager"
+        timestamptz CreatedAt "UTC"
+        timestamptz PrivacyPolicyAcceptedAt "UTC, nullable"
+        varchar PrivacyPolicyVersion "20, nullable"
+    }
+    Movies {
+        uuid Id PK
+        varchar Title "200"
+        text Synopsis
+        int DurationMinutes
+        varchar Genre "50"
+        date ReleaseDate
+        varchar PosterUrl "500"
+        timestamptz ArchivedAt "UTC, nullable : film archivé, plus proposé à la programmation (US 5.6)"
+    }
+    Rooms {
+        uuid Id PK
+        varchar Name UK "50"
+        int Capacity "CHECK > 0, nombre maximal de places"
+    }
+    Seats {
+        uuid Id PK
+        uuid RoomId FK
+        varchar Row "5, ex. A"
+        int Number
+    }
+    Screenings {
+        uuid Id PK
+        uuid MovieId FK
+        uuid RoomId FK
+        timestamp StartsAt "heure locale du cinéma"
+        numeric Price "10,2"
+        timestamptz CancelledAt "UTC, nullable : séance annulée (US 5.2)"
+    }
+    Reservations {
+        uuid Id PK
+        uuid UserId FK "nullable : compte supprimé"
+        uuid ScreeningId FK
+        varchar Status "PendingPayment, Confirmed, Expired, Cancelled"
+        timestamptz CreatedAt "UTC"
+        timestamptz ExpiresAt "UTC, nullable"
+        numeric TotalAmount "10,2"
+        timestamptz PaidAt "UTC, nullable (US 3.1)"
+        varchar PaymentReference "255, nullable : paiement Stripe"
+        timestamptz TermsOfSaleAcceptedAt "UTC, nullable"
+        varchar TermsOfSaleVersion "20, nullable"
+        varchar TicketCode UK "32, nullable : code du billet (US 3.2)"
+        timestamptz TicketUsedAt "UTC, nullable : billet passé à l'entrée (US 4.1)"
+    }
+    ReservedSeats {
+        uuid ReservationId PK, FK
+        uuid SeatId PK, FK
+        uuid ScreeningId FK
+    }
+```
+
+## Tables
+
+| Table | Rôle |
+|---|---|
+| `Users` (utilisateurs) | comptes des clients et du personnel, avec leur rôle |
+| `Movies` (films) | catalogue des films : ceux du jeu de démonstration et ceux ajoutés par le responsable (US 5.6) ; un film archivé reste dans la table |
+| `Rooms` (salles) | salles du cinéma et leur capacité maximale |
+| `Seats` (places) | places physiques d'une salle (rang et numéro) |
+| `Screenings` (séances) | projection d'un film dans une salle à une heure donnée, avec son prix |
+| `Reservations` (réservations) | réservation d'un utilisateur pour une séance, avec son statut et son montant |
+| `ReservedSeats` (places réservées) | places occupées par une réservation pour une séance |
+
+L'énoncé cite cinq tables. `Rooms` et `ReservedSeats` sont ajoutées pour respecter la troisième forme normale : la salle et sa capacité ne sont pas répétées dans chaque séance, et une réservation de plusieurs places ne répète pas les informations de la réservation.
+
+## Contraintes clés
+
+| Contrainte | Table | Rôle |
+|---|---|---|
+| `UNIQUE (ScreeningId, SeatId)` | `ReservedSeats` | **une place ne peut pas être vendue deux fois pour une même séance**, même en cas de bug applicatif ou de requêtes simultanées |
+| `PRIMARY KEY (ReservationId, SeatId)` | `ReservedSeats` | une réservation ne contient pas deux fois la même place |
+| `UNIQUE (RoomId, Row, Number)` | `Seats` | une place n'existe qu'une fois dans une salle |
+| `UNIQUE (Email)` | `Users` | un compte par adresse e-mail |
+| `UNIQUE (Name)` | `Rooms` | deux salles ne portent pas le même nom |
+| `UNIQUE (TicketCode)` | `Reservations` | deux billets n'ont jamais le même code (US 3.2) ; les réservations non payées, sans code (`NULL`), ne se gênent pas ; ajouté par la migration `AddTicketCode` |
+| `CHECK (Capacity > 0)` | `Rooms` | une salle a au moins une place |
+
+Index non uniques :
+
+| Index | Table | Requête servie |
+|---|---|---|
+| `IX_Screenings_StartsAt` (`StartsAt`) | `Screenings` | programmation d'un jour, toutes salles confondues (`GET /api/schedule`) ; ajouté par la migration `AddScreeningStartsAtIndex` |
+| `IX_Screenings_RoomId_StartsAt` (`RoomId`, `StartsAt`) | `Screenings` | séances d'une salle, pour vérifier qu'une salle n'a pas deux séances qui se chevauchent |
+
+L'index composite `(RoomId, StartsAt)` ne sert pas pour une recherche sur `StartsAt` seul : il est trié d'abord par `RoomId` (règle du préfixe gauche), d'où l'index dédié. S'y ajoutent les index créés automatiquement sur les clés étrangères.
+
+## Suppressions
+
+Les clés étrangères sont en `RESTRICT` : on ne peut pas supprimer un film, une salle, une place ou une séance encore référencés. Deux exceptions :
+
+- `ReservedSeats → Reservations` est en `CASCADE` : supprimer une réservation libère ses places ;
+- `Reservations → Users` est en `SET NULL` : supprimer un compte (droit à l'effacement, RGPD) garde ses réservations, exigées par la comptabilité (10 ans), sans plus aucun lien avec la personne. PostgreSQL détache les réservations dans la même instruction que la suppression du compte ; avant ce choix (migration `DetachReservationsOfDeletedAccounts`), la base refusait la suppression d'un client ayant réservé.
+
+Un film n'est jamais supprimé, ni par l'application ni par le responsable : il est **archivé** (`ArchivedAt`, US 5.6). Il sort alors du catalogue de la programmation et ne peut plus être programmé, mais ses séances passées, leurs ventes et les billets qui y renvoient restent. De même, une séance annulée garde sa ligne (`CancelledAt`, US 5.2). La clé étrangère `Screenings → Movies` en `RESTRICT` reste donc une sécurité : elle n'est jamais sollicitée.
+
+À l'expiration ou à l'annulation, les lignes de `ReservedSeats` sont supprimées pour libérer les places, et la réservation garde son statut (`Expired`, `Cancelled`) pour l'historique.
+
+## Règles vérifiées dans le code, pas en base
+
+- Une place réservée doit appartenir à la salle de la séance : une clé étrangère ne peut pas l'exprimer. La règle est vérifiée dans le gestionnaire de réservation et couverte par un test.
+- Le `ScreeningId` d'une place réservée doit être celui de sa réservation. Il est vérifié dans le gestionnaire de réservation (une clé étrangère composite vers `Reservations (Id, ScreeningId)` permettrait de le garantir en base).
+- Le nombre de places d'une salle ne dépasse pas sa `Capacity` : une contrainte `CHECK` ne peut pas compter les lignes d'une autre table. La règle est vérifiée par le gestionnaire qui crée les places.
+- L'adresse e-mail est enregistrée en minuscules, pour que l'unicité ne dépende pas de la casse.
+- Un film n'est ajouté qu'une fois : même titre (casse ignorée) et même date de sortie qu'un film non archivé, l'ajout est refusé (`409 movie-already-exists`). Un film archivé ne compte plus : il peut être ajouté à nouveau. La règle est vérifiée dans le code ; en base, il faudrait un index unique partiel sur une expression (`upper("Title")`, `"ReleaseDate"`, `WHERE "ArchivedAt" IS NULL`), amélioration possible qui refuserait aussi deux ajouts simultanés du même film.
+- `Genre` est un texte, mais l'API n'accepte que l'un des 17 genres de `MovieGenres` : le filtre par genre de la consultation publique ne se divise pas en « Drame » et « drame ». Une table des genres est une amélioration possible, inutile tant que la liste ne change pas.
+- `PosterUrl` est soit l'adresse d'une image de TMDB (films de démonstration), soit `/posters/<GUID>.<extension>` pour un film ajouté par le responsable : l'image est dans un bucket S3, pas dans la base.
+- La durée d'un film (`DurationMinutes`) ne change pas, et le film ne s'archive pas, tant qu'une de ses séances n'est pas terminée (début plus durée) : les séances ont été placées dans leur salle avec cette durée.
+
+## Dates
+
+- `StartsAt` est en `timestamp without time zone` : c'est l'heure affichée au cinéma (18 h 30 à Paris), sans conversion.
+- `CreatedAt`, `ExpiresAt`, `PrivacyPolicyAcceptedAt`, `TermsOfSaleAcceptedAt`, `PaidAt`, `CancelledAt`, `TicketUsedAt` et `ArchivedAt` sont en `timestamp with time zone` et toujours écrits en UTC : ce sont des instants techniques.
+- `ReleaseDate` est en `date` : seul le jour compte.

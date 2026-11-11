@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Code coverage settings, shared by the workstations and the CI: same figures everywhere -->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <!-- opencover for SonarCloud, cobertura for ReportGenerator on the workstation -->
+          <Format>opencover,cobertura</Format>
+          <!-- Auto-properties are written by the compiler and hold no logic: nothing to test -->
+          <SkipAutoProps>true</SkipAutoProps>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

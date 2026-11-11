@@ -1,0 +1,203 @@
+using GrandCinema.Application.Abstractions.Persistence;
+using GrandCinema.Domain.Entities;
+using GrandCinema.Domain.Enums;
+using Microsoft.EntityFrameworkCore;
+using Npgsql;
+
+namespace GrandCinema.Infrastructure.Persistence.Repositories;
+
+public sealed class ReservationRepository : IReservationRepository
+{
+    private readonly GrandCinemaDbContext _db;
+
+    public ReservationRepository(GrandCinemaDbContext db)
+    {
+        _db = db;
+    }
+
+    public async Task<HoldResult> TryHoldSeatsAsync(Guid userId, Screening screening, int seatCount, DateTime nowUtc, CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+
+        // 1. Lock the screening until the end of the transaction (bug 0001): a second hold on the same screening
+        //    waits here, then sees the seats taken by the first one. The other screenings are not slowed down.
+        await _db.Database.ExecuteSqlAsync(
+            $"""SELECT 1 FROM "Screenings" WHERE "Id" = {screening.Id} FOR UPDATE""", cancellationToken);
+
+        // 2. Release the holds of this screening whose 10 minutes have run out: their rows would otherwise
+        //    keep the unique index (ScreeningId, SeatId) busy, and their seats could never be sold again.
+        var expiredHolds = await _db.Reservations
+            .Where(r => r.ScreeningId == screening.Id && r.Status == ReservationStatus.PendingPayment && r.ExpiresAt <= nowUtc)
+            .Select(r => r.Id)
+            .ToListAsync(cancellationToken);
+        if (expiredHolds.Count > 0)
+        {
+            await _db.ReservedSeats
+                .Where(reserved => expiredHolds.Contains(reserved.ReservationId))
+                .ExecuteDeleteAsync(cancellationToken);
+            await _db.Reservations
+                .Where(r => expiredHolds.Contains(r.Id))
+                .ExecuteUpdateAsync(setters => setters.SetProperty(r => r.Status, ReservationStatus.Expired), cancellationToken);
+        }
+
+        // 3. At most 10 seats per customer and per screening, held or paid, counted under the lock,
+        //    so that two tabs of the same customer cannot both pass. After step 2, every hold left is still valid.
+        var seatsOfCustomer = await _db.ReservedSeats
+            .CountAsync(reserved => reserved.ScreeningId == screening.Id
+                && reserved.Reservation.UserId == userId
+                && (reserved.Reservation.Status == ReservationStatus.Confirmed || reserved.Reservation.Status == ReservationStatus.PendingPayment),
+                cancellationToken);
+        if (seatsOfCustomer + seatCount > Reservation.MaximumSeatsPerCustomer)
+        {
+            // The release of the expired holds is kept, even when this hold is refused
+            await transaction.CommitAsync(cancellationToken);
+            return HoldResult.Refused(HoldRefusal.SeatLimitReached);
+        }
+
+        // 4. The first free seats of the room: rows A to Z, then AA…, by number
+        var freeSeats = await _db.Seats
+            .Where(seat => seat.RoomId == screening.RoomId
+                && !_db.ReservedSeats.Any(reserved => reserved.ScreeningId == screening.Id && reserved.SeatId == seat.Id))
+            .OrderBy(seat => seat.Row.Length)
+            .ThenBy(seat => seat.Row)
+            .ThenBy(seat => seat.Number)
+            .Take(seatCount)
+            .ToListAsync(cancellationToken);
+        if (freeSeats.Count < seatCount)
+        {
+            // The release of the expired holds is kept, even when this hold is refused
+            await transaction.CommitAsync(cancellationToken);
+            return HoldResult.Refused(HoldRefusal.NotEnoughSeats);
+        }
+
+        // 5. Save the hold; the commit releases the lock
+        var hold = Reservation.Hold(userId, screening, freeSeats, nowUtc);
+        _db.Reservations.Add(hold);
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        // Last line of defence: the unique index refuses a seat sold twice, whatever the code above does (bug 0001)
+        catch (DbUpdateException exception) when (exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            return HoldResult.Refused(HoldRefusal.NotEnoughSeats);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return HoldResult.Held(hold);
+    }
+
+    public async Task<Reservation?> GetByIdAsync(Guid reservationId, CancellationToken cancellationToken = default)
+    {
+        return await _db.Reservations
+            .AsNoTracking()
+            // A reservation stays readable by its owner after its screening was cancelled (US 5.2)
+            .IgnoreQueryFilters()
+            .Include(r => r.Screening)
+            .Include(r => r.ReservedSeats)
+            .ThenInclude(reserved => reserved.Seat)
+            .FirstOrDefaultAsync(r => r.Id == reservationId, cancellationToken);
+    }
+
+    public async Task<bool> CancelHoldAsync(Guid reservationId, CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+
+        // Only a hold waiting for payment: PostgreSQL checks the status when it writes,
+        // so a reservation paid in the meantime (US 3.1) is never cancelled
+        var cancelled = await _db.Reservations
+            .Where(r => r.Id == reservationId && r.Status == ReservationStatus.PendingPayment)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(r => r.Status, ReservationStatus.Cancelled), cancellationToken);
+        if (cancelled == 0)
+        {
+            return false;
+        }
+
+        // Its seats go back on sale at once: the unique index (ScreeningId, SeatId) lets another customer hold them
+        await _db.ReservedSeats
+            .Where(reserved => reserved.ReservationId == reservationId)
+            .ExecuteDeleteAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task RecordTermsOfSaleAsync(Guid reservationId, string version, DateTime nowUtc, CancellationToken cancellationToken = default)
+    {
+        await _db.Reservations
+            .Where(r => r.Id == reservationId)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(r => r.TermsOfSaleAcceptedAt, nowUtc)
+                .SetProperty(r => r.TermsOfSaleVersion, version), cancellationToken);
+    }
+
+    public async Task<PaymentConfirmation> ConfirmPaymentAsync(Guid reservationId, string paymentReference, DateTime nowUtc, CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+
+        var screeningId = await _db.Reservations
+            .Where(r => r.Id == reservationId)
+            .Select(r => (Guid?)r.ScreeningId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (screeningId is null)
+        {
+            return PaymentConfirmation.Rejected;
+        }
+
+        // The lock of the holds (bug 0001): a hold that releases the expired seats of this screening
+        // and this confirmation run one after the other, never at the same time
+        await _db.Database.ExecuteSqlAsync(
+            $"""SELECT 1 FROM "Screenings" WHERE "Id" = {screeningId.Value} FOR UPDATE""", cancellationToken);
+
+        // Still waiting for payment, so its seats are still attached to it, even after the 10 minutes
+        // as long as no hold has released them: it is sold
+        var confirmed = await _db.Reservations
+            .Where(r => r.Id == reservationId && r.Status == ReservationStatus.PendingPayment)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(r => r.Status, ReservationStatus.Confirmed)
+                .SetProperty(r => r.PaidAt, nowUtc)
+                .SetProperty(r => r.PaymentReference, paymentReference)
+                .SetProperty(r => r.TicketCode, Reservation.NewTicketCode()), cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        if (confirmed == 1)
+        {
+            return PaymentConfirmation.Confirmed;
+        }
+
+        // Stripe sends a notification again when it is not sure it was received: the same payment changes nothing
+        var reservation = await _db.Reservations
+            .Where(r => r.Id == reservationId)
+            .Select(r => new { r.Status, r.PaymentReference })
+            .SingleAsync(cancellationToken);
+        return reservation.Status == ReservationStatus.Confirmed && reservation.PaymentReference == paymentReference
+            ? PaymentConfirmation.AlreadyConfirmed
+            : PaymentConfirmation.Rejected;
+    }
+
+    public async Task<TicketUse> UseTicketAsync(string ticketCode, Guid screeningId, DateTime nowUtc, CancellationToken cancellationToken = default)
+    {
+        // One statement: PostgreSQL locks the row, so of two scans at the same instant, the second finds it used
+        var letIn = await _db.Reservations
+            .Where(r => r.TicketCode == ticketCode
+                && r.ScreeningId == screeningId
+                && r.Status == ReservationStatus.Confirmed
+                && r.TicketUsedAt == null)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(r => r.TicketUsedAt, nowUtc), cancellationToken);
+        if (letIn == 1)
+        {
+            return TicketUse.Accepted;
+        }
+
+        // Refused: read the ticket only to say why
+        var ticket = await _db.Reservations
+            .AsNoTracking()
+            .Where(r => r.TicketCode == ticketCode && r.Status == ReservationStatus.Confirmed)
+            .Select(r => new { r.ScreeningId })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (ticket is null)
+        {
+            return TicketUse.NotFound;
+        }
+
+        return ticket.ScreeningId == screeningId ? TicketUse.AlreadyUsed : TicketUse.OtherScreening;
+    }
+}

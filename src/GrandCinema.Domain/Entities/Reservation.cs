@@ -1,0 +1,67 @@
+using System.Security.Cryptography;
+using System.Text.RegularExpressions;
+using GrandCinema.Domain.Enums;
+
+namespace GrandCinema.Domain.Entities;
+
+public class Reservation
+{
+    // Seats are held while the customer pays, then freed after 10 minutes.
+    public static readonly TimeSpan HoldDuration = TimeSpan.FromMinutes(10);
+    // At most 10 seats per customer and per screening, held or paid.
+    public const int MaximumSeatsPerCustomer = 10;
+
+    public Guid Id { get; set; }
+    public Guid? UserId { get; set; }
+    public User? User { get; set; } = null!;
+    public Guid ScreeningId { get; set; }
+    public ReservationStatus Status { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? ExpiresAt { get; set; }
+    public decimal TotalAmount { get; set; }
+    public DateTime? PaidAt { get; set; }
+    // Identifier of the payment at Stripe
+    public string? PaymentReference { get; set; }
+    // proof that the terms of sale were accepted before paying, and which version
+    public DateTime? TermsOfSaleAcceptedAt { get; set; }
+    public string? TermsOfSaleVersion { get; set; }
+    // The code of the ticket, shown as a QR code and checked. null until paid
+    public string? TicketCode { get; set; }
+    // When the ticket is checked.
+    public DateTime? TicketUsedAt { get; set; }
+    public ICollection<ReservedSeat> ReservedSeats { get; set; } = new List<ReservedSeat>();
+    public Screening Screening { get; set; } = null!;
+
+    /// <summary>Holds seats for a signed-in customer while they pay: not a sale yet (US 2.3, criterion 3).</summary>
+    public static Reservation Hold(Guid userId, Screening screening, IReadOnlyCollection<Seat> seats, DateTime nowUtc)
+    {
+        var hold = new Reservation
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            // The identifier only: the screening may come from another DbContext, it must not be inserted again
+            ScreeningId = screening.Id,
+            Status = ReservationStatus.PendingPayment,
+            CreatedAt = nowUtc,
+            ExpiresAt = nowUtc + HoldDuration,
+            // The price is fixed when the seats are held: the payment (US 3.1) takes this amount
+            TotalAmount = screening.Price * seats.Count
+        };
+
+        foreach (var seat in seats)
+        {
+            hold.ReservedSeats.Add(new ReservedSeat { ReservationId = hold.Id, ScreeningId = screening.Id, SeatId = seat.Id, Seat = seat });
+        }
+
+        return hold;
+    }
+
+    /// <summary>A hold whose 10 minutes have run out frees its seats, even before it is marked "Expired".</summary>
+    public bool HasExpired(DateTime nowUtc) => Status == ReservationStatus.PendingPayment && ExpiresAt <= nowUtc;
+
+    /// <summary>A code that cannot be guessed, drawn when the payment is confirmed.</summary>
+    public static string NewTicketCode() => Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
+
+    /// <summary>What a QR code of the cinema contains (NewTicketCode), and nothing else.</summary>
+    public static bool IsTicketCode(string? text) => text is not null && Regex.IsMatch(text, "^[0-9a-f]{32}$", RegexOptions.None, TimeSpan.FromMilliseconds(100));
+}
