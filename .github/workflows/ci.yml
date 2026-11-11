@@ -17,15 +17,15 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # SonarCloud compares with the history to find the new code
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
 
-      - uses: actions/setup-java@v4 # the SonarScanner for .NET needs Java 17 or later
+      - uses: actions/setup-java@v6 # the SonarScanner for .NET needs Java 17 or later
         with:
           distribution: temurin
           java-version: 17
