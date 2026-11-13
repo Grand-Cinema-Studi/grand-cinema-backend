@@ -163,6 +163,8 @@ Les affiches, dates de sortie et durées viennent de [TMDB](https://www.themovie
 
 Sur la recette, les données de démonstration se remettent à zéro avec `deploy/reset-demo-data.sh` (`sudo bash reset-demo-data.sh` sur le serveur, voir le bug 0002 du dépôt de documentation) : jamais en rechargeant `seed-dev.sql` seul, ce qui ajouterait un second programme décalé au premier (deux films dans une salle au même moment).
 
+Sur la recette, chaque déploiement installe aussi la sauvegarde quotidienne de la base (`deploy/backup.sh`, copiée hors du serveur dans un bucket S3 privé) et le test de restauration sans coupure (`deploy/restore-test.sh`, `sudo /opt/grandcinema/restore-test.sh` sur le serveur) : voir « Sauvegarder et restaurer la base » dans `deployment/deploy-guide.md` du dépôt de documentation.
+
 Les deux scripts de remise à zéro (`scripts/reset-demo-screenings.sh` sur le poste, `deploy/reset-demo-data.sh` sur la recette) appliquent en dernier `docs/database/seed-remove-overlaps.sql` : les durées de TMDB sont parfois plus longues que celles du seed (Amadeus : 180 minutes au lieu de 160), et la plus tardive de deux séances de démonstration qui se chevaucheraient dans une salle est retirée (règle de l'API : film, puis 15 minutes de nettoyage).
 
 ### 5. Lancer l'API

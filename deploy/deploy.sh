@@ -18,6 +18,18 @@ cd "$APP_DIR"
 
 curl --proto '=https' --tlsv1.2 -fsSL "$RAW_URL/docker-compose.prod.yml" -o docker-compose.yml
 
+# The daily backup and the restore test, from the same commit as the rest:
+# a new server receives them with its first deployment
+install_from_repo() {
+    local file
+    file=$(mktemp)
+    curl --proto '=https' --tlsv1.2 -fsSL "$RAW_URL/$1" -o "$file"
+    install -m 0700 -o root -g root "$file" "$2"
+    rm -f "$file"
+}
+install_from_repo backup.sh /etc/cron.daily/grandcinema-backup
+install_from_repo restore-test.sh "$APP_DIR/restore-test.sh"
+
 umask 077
 cat > .env <<EOF
 POSTGRES_PASSWORD=$(parameter postgres-password)
